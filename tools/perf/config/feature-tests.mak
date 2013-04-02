@@ -74,7 +74,7 @@ int main(void)
 endef
 endif
 
-ifndef NO_GTK2
+ifdef CONFIG_GTK2
 define SOURCE_GTK2
 #pragma GCC diagnostic ignored \"-Wstrict-prototypes\"
 #include <gtk/gtk.h>
