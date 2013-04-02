@@ -115,7 +115,7 @@ return 0;
 endef
 endif
 
-ifndef NO_LIBPYTHON
+ifdef CONFIG_LIBPYTHON
 define SOURCE_PYTHON_VERSION
 #include <Python.h>
 #if PY_VERSION_HEX >= 0x03000000

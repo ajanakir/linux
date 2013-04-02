@@ -16,8 +16,6 @@ include config/utilities.mak
 #
 # Define CROSS_COMPILE as prefix name of compiler if you want cross-builds.
 #
-# Define NO_LIBPYTHON to disable python script extension.
-#
 # Define PYTHON to point to the python binary if the default
 # `python' is not correct; for example: PYTHON=python2
 #
@@ -733,69 +731,64 @@ ifdef CONFIG_LIBPERL
     LIB_OBJS += $(OUTPUT)scripts/perl/Perf-Trace-Util/Context.o
 endif
 
-disable-python = $(eval $(disable-python_code))
-define disable-python_code
-  BASIC_CFLAGS += -DNO_LIBPYTHON
-  $(if $(1),$(warning No $(1) was found))
-  $(warning Python support will not be built)
-endef
+ifdef CONFIG_LIBPYTHON
+    override PYTHON := \
+        $(call get-executable-or-default,PYTHON,python)
 
-override PYTHON := \
-  $(call get-executable-or-default,PYTHON,python)
+    ifndef PYTHON
+        $(error python interpreter not found. Install it or unset CONFIG_LIBPYTHON to continue.)
+    endif
 
-ifndef PYTHON
-  $(call disable-python,python interpreter)
-else
+    PYTHON_WORD := $(call shell-wordify,$(PYTHON))
 
-  PYTHON_WORD := $(call shell-wordify,$(PYTHON))
+    # python extension build directories
+    PYTHON_EXTBUILD     := $(OUTPUT)python_ext_build/
+    PYTHON_EXTBUILD_LIB := $(PYTHON_EXTBUILD)lib/
+    PYTHON_EXTBUILD_TMP := $(PYTHON_EXTBUILD)tmp/
+    export PYTHON_EXTBUILD_LIB PYTHON_EXTBUILD_TMP
 
-  ifdef NO_LIBPYTHON
-    $(call disable-python)
-  else
+    python-clean := rm -rf $(PYTHON_EXTBUILD) $(OUTPUT)python/perf.so
 
     override PYTHON_CONFIG := \
-      $(call get-executable-or-default,PYTHON_CONFIG,$(PYTHON)-config)
+        $(call get-executable-or-default,PYTHON_CONFIG,$(PYTHON)-config)
 
     ifndef PYTHON_CONFIG
-      $(call disable-python,python-config tool)
-    else
-
-      PYTHON_CONFIG_SQ := $(call shell-sq,$(PYTHON_CONFIG))
-
-      PYTHON_EMBED_LDOPTS := $(shell $(PYTHON_CONFIG_SQ) --ldflags 2>/dev/null)
-      PYTHON_EMBED_LDFLAGS := $(call strip-libs,$(PYTHON_EMBED_LDOPTS))
-      PYTHON_EMBED_LIBADD := $(call grep-libs,$(PYTHON_EMBED_LDOPTS))
-      PYTHON_EMBED_CCOPTS := $(shell $(PYTHON_CONFIG_SQ) --cflags 2>/dev/null)
-      FLAGS_PYTHON_EMBED := $(PYTHON_EMBED_CCOPTS) $(PYTHON_EMBED_LDOPTS)
-
-      ifneq ($(call try-cc,$(SOURCE_PYTHON_EMBED),$(FLAGS_PYTHON_EMBED),python),y)
-        $(call disable-python,Python.h (for Python 2.x))
-      else
-
-        ifneq ($(call try-cc,$(SOURCE_PYTHON_VERSION),$(FLAGS_PYTHON_EMBED),python version),y)
-          $(warning Python 3 is not yet supported; please set)
-          $(warning PYTHON and/or PYTHON_CONFIG appropriately.)
-          $(warning If you also have Python 2 installed, then)
-          $(warning try something like:)
-          $(warning $(and ,))
-          $(warning $(and ,)  make PYTHON=python2)
-          $(warning $(and ,))
-          $(warning Otherwise, disable Python support entirely:)
-          $(warning $(and ,))
-          $(warning $(and ,)  make NO_LIBPYTHON=1)
-          $(warning $(and ,))
-          $(error   $(and ,))
-        else
-          ALL_LDFLAGS += $(PYTHON_EMBED_LDFLAGS)
-          EXTLIBS += $(PYTHON_EMBED_LIBADD)
-          LIB_OBJS += $(OUTPUT)util/scripting-engines/trace-event-python.o
-          LIB_OBJS += $(OUTPUT)scripts/python/Perf-Trace-Util/Context.o
-          LANG_BINDINGS += $(OUTPUT)python/perf.so
-        endif
-
-      endif
+        $(error python-config not found. Install it or unset CONFIG_LIBPYTHON to continue.)
     endif
-  endif
+
+    PYTHON_CONFIG_SQ := $(call shell-sq,$(PYTHON_CONFIG))
+
+    PYTHON_EMBED_LDOPTS := $(shell $(PYTHON_CONFIG_SQ) --ldflags 2>/dev/null)
+    PYTHON_EMBED_LDFLAGS := $(call strip-libs,$(PYTHON_EMBED_LDOPTS))
+    PYTHON_EMBED_LIBADD := $(call grep-libs,$(PYTHON_EMBED_LDOPTS))
+    PYTHON_EMBED_CCOPTS := $(shell $(PYTHON_CONFIG_SQ) --cflags 2>/dev/null)
+    FLAGS_PYTHON_EMBED := $(PYTHON_EMBED_CCOPTS) $(PYTHON_EMBED_LDOPTS)
+
+    ifneq ($(call try-cc,$(SOURCE_PYTHON_EMBED),$(FLAGS_PYTHON_EMBED)),y)
+        $(warning Failed to detect python development kit.)
+        $(warning Install it or unset CONFIG_LIBPYTHON to continue.)
+        $(warning e.g., apt-get install python-dev (ubuntu).)
+        $(warning       yum install python-devel (Fedora).)
+        $(error )
+    endif
+
+    ifneq ($(call try-cc,$(SOURCE_PYTHON_VERSION),$(FLAGS_PYTHON_EMBED),python version),y)
+        $(warning Python 3 is not yet supported; please set)
+        $(warning PYTHON and/or PYTHON_CONFIG appropriately.)
+        $(warning If you also have Python 2 installed, then)
+        $(warning try something like:)
+        $(warning $(and ,))
+        $(warning $(and ,)  make PYTHON=python2)
+        $(warning $(and ,))
+        $(warning Otherwise, disable Python support entirely by unsetting CONFIG_LIBPYTHON.)
+        $(error   $(and ,))
+    endif
+
+    ALL_LDFLAGS   += $(PYTHON_EMBED_LDFLAGS)
+    EXTLIBS       += $(PYTHON_EMBED_LIBADD)
+    LIB_OBJS      += $(OUTPUT)util/scripting-engines/trace-event-python.o
+    LIB_OBJS      += $(OUTPUT)scripts/python/Perf-Trace-Util/Context.o
+    LANG_BINDINGS += $(OUTPUT)python/perf.so
 endif
 
 ifdef NO_DEMANGLE

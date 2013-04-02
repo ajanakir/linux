@@ -1,2 +1,5 @@
 config LIBPERL
     bool "Enable support for perl scripting engine"
+
+config LIBPYTHON
+    bool "Enable support for python scripting engine"
