@@ -33,8 +33,6 @@ include config/utilities.mak
 # Define WERROR=0 to disable treating any warnings as errors.
 #
 # Define NO_BACKTRACE if you do not want stack backtrace debug feature
-#
-# Define NO_LIBNUMA if you do not want numa perf benchmark
 
 $(OUTPUT)PERF-VERSION-FILE: .FORCE-PERF-VERSION-FILE
 	@$(SHELL_PATH) util/PERF-VERSION-GEN $(OUTPUT)
@@ -837,15 +835,13 @@ ifndef NO_BACKTRACE
        endif
 endif
 
-ifndef NO_LIBNUMA
-	FLAGS_LIBNUMA = $(ALL_CFLAGS) $(ALL_LDFLAGS) -lnuma
-	ifneq ($(call try-cc,$(SOURCE_LIBNUMA),$(FLAGS_LIBNUMA),libnuma),y)
-		msg := $(warning No numa.h found, disables 'perf bench numa mem' benchmark, please install numa-libs-devel or libnuma-dev);
-	else
-		BASIC_CFLAGS += -DLIBNUMA_SUPPORT
-		BUILTIN_OBJS += $(OUTPUT)bench/numa.o
-		EXTLIBS += -lnuma
-	endif
+ifdef CONFIG_LIBNUMA
+    FLAGS_LIBNUMA = $(ALL_CFLAGS) $(ALL_LDFLAGS) -lnuma
+    ifneq ($(call try-cc,$(SOURCE_LIBNUMA),$(FLAGS_LIBNUMA),libnuma),y)
+        $(error No numa.h found. Please install numa-libs-devel or libnuma-dev or unset CONFIG_LIBNUMA)
+    endif
+    BUILTIN_OBJS += $(OUTPUT)bench/numa.o
+    EXTLIBS += -lnuma
 endif
 
 ifdef ASCIIDOC8

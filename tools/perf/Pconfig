@@ -44,3 +44,8 @@ config LIBPERL
 
 config LIBPYTHON
     bool "Enable support for python scripting engine"
+
+config LIBNUMA
+    bool "Enable support for libnuma"
+    help
+        Used for 'perf bench numa mem' benchmark

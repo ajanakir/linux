@@ -21,6 +21,7 @@
 #include "util/parse-options.h"
 #include "builtin.h"
 #include "bench/bench.h"
+#include <linux/kconfig.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,7 +36,7 @@ struct bench_suite {
 /* sentinel: easy for help */
 #define suite_all { "all", "Test all benchmark suites", NULL }
 
-#ifdef LIBNUMA_SUPPORT
+#ifdef CONFIG_LIBNUMA
 static struct bench_suite numa_suites[] = {
 	{ "mem",
 	  "Benchmark for NUMA workloads",
@@ -80,7 +81,7 @@ struct bench_subsys {
 };
 
 static struct bench_subsys subsystems[] = {
-#ifdef LIBNUMA_SUPPORT
+#ifdef CONFIG_LIBNUMA
 	{ "numa",
 	  "NUMA scheduling and MM behavior",
 	  numa_suites },
