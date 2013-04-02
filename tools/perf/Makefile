@@ -30,8 +30,6 @@ include config/utilities.mak
 #
 # Define EXTRA_CFLAGS=-m64 or EXTRA_CFLAGS=-m32 as appropriate for cross-builds.
 #
-# Define NO_DWARF if you do not want debug-info analysis feature at all.
-#
 # Define WERROR=0 to disable treating any warnings as errors.
 #
 # Define NO_BACKTRACE if you do not want stack backtrace debug feature
@@ -562,13 +560,17 @@ ifdef CONFIG_LIBELF
 	endif
 
     # libelf supported - what about dwarf?
-	FLAGS_DWARF=$(ALL_CFLAGS) $(LIBDW_CFLAGS) -ldw -lelf $(LIBDW_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
-	ifneq ($(call try-cc,$(SOURCE_DWARF),$(FLAGS_DWARF),libdw),y)
-		msg := $(warning No libdw.h found or old libdw.h found or elfutils is older than 0.138, disables dwarf support. Please install new elfutils-devel/libdw-dev);
-		NO_DWARF := 1
-	endif
+    ifdef CONFIG_DWARF
+        FLAGS_DWARF=$(ALL_CFLAGS) $(LIBDW_CFLAGS) -ldw -lelf $(LIBDW_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
+        ifneq ($(call try-cc,$(SOURCE_DWARF),$(FLAGS_DWARF),libdw),y)
+            $(warning No libdw.h found or old libdw.h found or elfutils is older than 0.138.ables dwarf support.)
+            $(error Please install new elfutils-devel/libdw-dev or disable CONFIG_DWARF);
+        endif
+    endif
 else
-    NO_DWARF := 1
+    ifdef CONFIG_DWARF
+        $(error CONFIG_DWARF depends on LIBELF)
+    endif
     ifdef CONFIG_DEMANGLE
         $(error CONFIG_DEMANGLE depends on LIBELF)
     endif
@@ -612,7 +614,7 @@ ifdef CONFIG_LIBELF
 	    BASIC_CFLAGS += -DLIBELF_MMAP
     endif
 
-    ifndef NO_DWARF
+    ifdef CONFIG_DWARF
         ifeq ($(origin PERF_HAVE_DWARF_REGS), undefined)
 	        msg := $(warning DWARF register mappings have not been defined for architecture $(ARCH), DWARF support disabled);
         else
@@ -622,7 +624,7 @@ ifdef CONFIG_LIBELF
             LIB_OBJS += $(OUTPUT)util/probe-finder.o
             LIB_OBJS += $(OUTPUT)util/dwarf-aux.o
         endif # PERF_HAVE_DWARF_REGS
-    endif # NO_DWARF
+    endif
 
 else
     EXTLIBS := $(filter-out -lelf,$(EXTLIBS))

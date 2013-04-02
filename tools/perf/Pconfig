@@ -26,6 +26,10 @@ config LIBUNWIND
     bool "Enable support for libunwind"
     depends on HAVE_CFI_UNWIND_SUPPORT && LIBELF
 
+config DWARF
+    bool "Enable support for dwarf"
+    depends on LIBELF
+
  config DEMANGLE
     bool "Enable support for demangle"
     depends on LIBELF

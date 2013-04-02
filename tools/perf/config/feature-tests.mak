@@ -6,7 +6,7 @@ int main(void)
 }
 endef
 
-ifndef NO_DWARF
+ifdef CONFIG_DWARF
 define SOURCE_DWARF
 #include <dwarf.h>
 #include <elfutils/libdw.h>
