@@ -36,8 +36,6 @@ include config/utilities.mak
 #
 # Define NO_DEMANGLE if you do not want C++ symbol demangling.
 #
-# Define NO_LIBELF if you do not want libelf dependency (e.g. cross-builds)
-#
 # Define NO_LIBUNWIND if you do not want libunwind dependency for dwarf
 # backtrace post unwind.
 #
@@ -545,30 +543,22 @@ ifneq ($(MAKECMDGOALS),tags)
 # because maintaining the nesting to match is a pain.  If
 # we had "elif" things would have been much nicer...
 
-ifdef NO_LIBELF
-	NO_DWARF := 1
-	NO_DEMANGLE := 1
-	NO_LIBUNWIND := 1
-else
-FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
-ifneq ($(call try-cc,$(SOURCE_LIBELF),$(FLAGS_LIBELF),libelf),y)
-	FLAGS_GLIBC=$(ALL_CFLAGS) $(ALL_LDFLAGS)
-	ifeq ($(call try-cc,$(SOURCE_GLIBC),$(FLAGS_GLIBC),glibc),y)
-		LIBC_SUPPORT := 1
-	endif
-	ifeq ($(BIONIC),1)
-		LIBC_SUPPORT := 1
-	endif
-	ifeq ($(LIBC_SUPPORT),1)
-		msg := $(warning No libelf found, disables 'probe' tool, please install elfutils-libelf-devel/libelf-dev);
+ifdef CONFIG_LIBELF
+    FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
 
-		NO_LIBELF := 1
-		NO_DWARF := 1
-		NO_DEMANGLE := 1
-	else
-		msg := $(error No gnu/libc-version.h found, please install glibc-dev[el]/glibc-static);
-	endif
-else
+    # try to compile with libelf support ...
+    ifneq ($(call try-cc,$(SOURCE_LIBELF),$(FLAGS_LIBELF),libelf),y)
+        FLAGS_GLIBC=$(ALL_CFLAGS) $(ALL_LDFLAGS)
+        # ... it failed. Is the failure due to missing libc or libelf
+        # development support?
+        ifneq ($(call try-cc,$(SOURCE_GLIBC),$(FLAGS_GLIBC),glibc),y)
+            $(error No gnu/libc-version.h found, please install glibc-dev[el]/glibc-static or disable CONFIG_LIBC)
+        endif
+
+        # libelf not installed
+        $(error No libelf found, please install elfutils-libelf-devel/libelf-dev or disable CONFIG_LIBELF);
+    endif
+
 	# for linking with debug library, run like:
 	# make DEBUG=1 LIBDW_DIR=/opt/libdw/
 	ifdef LIBDW_DIR
@@ -576,13 +566,17 @@ else
 		LIBDW_LDFLAGS := -L$(LIBDW_DIR)/lib
 	endif
 
+    # libelf supported - what about dwarf?
 	FLAGS_DWARF=$(ALL_CFLAGS) $(LIBDW_CFLAGS) -ldw -lelf $(LIBDW_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
 	ifneq ($(call try-cc,$(SOURCE_DWARF),$(FLAGS_DWARF),libdw),y)
 		msg := $(warning No libdw.h found or old libdw.h found or elfutils is older than 0.138, disables dwarf support. Please install new elfutils-devel/libdw-dev);
 		NO_DWARF := 1
-	endif # Dwarf support
-endif # SOURCE_LIBELF
-endif # NO_LIBELF
+	endif
+else
+    NO_DWARF := 1
+    NO_DEMANGLE := 1
+    NO_LIBUNWIND := 1
+endif
 
 # There's only x86 (both 32 and 64) support for CFI unwind so far
 ifneq ($(ARCH),x86)
@@ -610,40 +604,37 @@ ifneq ($(OUTPUT),)
 	BASIC_CFLAGS += -I$(OUTPUT)
 endif
 
-ifdef NO_LIBELF
-EXTLIBS := $(filter-out -lelf,$(EXTLIBS))
+ifdef CONFIG_LIBELF
+    BASIC_CFLAGS += -DLIBELF_SUPPORT
 
-# Remove ELF/DWARF dependent codes
-LIB_OBJS := $(filter-out $(OUTPUT)util/symbol-elf.o,$(LIB_OBJS))
-LIB_OBJS := $(filter-out $(OUTPUT)util/dwarf-aux.o,$(LIB_OBJS))
-LIB_OBJS := $(filter-out $(OUTPUT)util/probe-event.o,$(LIB_OBJS))
-LIB_OBJS := $(filter-out $(OUTPUT)util/probe-finder.o,$(LIB_OBJS))
+    FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
+    ifeq ($(call try-cc,$(SOURCE_ELF_MMAP),$(FLAGS_LIBELF),-DLIBELF_MMAP),y)
+	    BASIC_CFLAGS += -DLIBELF_MMAP
+    endif
 
-BUILTIN_OBJS := $(filter-out $(OUTPUT)builtin-probe.o,$(BUILTIN_OBJS))
+    ifndef NO_DWARF
+        ifeq ($(origin PERF_HAVE_DWARF_REGS), undefined)
+	        msg := $(warning DWARF register mappings have not been defined for architecture $(ARCH), DWARF support disabled);
+        else
+            BASIC_CFLAGS := -DDWARF_SUPPORT $(LIBDW_CFLAGS) $(BASIC_CFLAGS)
+            BASIC_LDFLAGS := $(LIBDW_LDFLAGS) $(BASIC_LDFLAGS)
+            EXTLIBS += -lelf -ldw
+            LIB_OBJS += $(OUTPUT)util/probe-finder.o
+            LIB_OBJS += $(OUTPUT)util/dwarf-aux.o
+        endif # PERF_HAVE_DWARF_REGS
+    endif # NO_DWARF
 
-# Use minimal symbol handling
-LIB_OBJS += $(OUTPUT)util/symbol-minimal.o
-
-else # NO_LIBELF
-BASIC_CFLAGS += -DLIBELF_SUPPORT
-
-FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
-ifeq ($(call try-cc,$(SOURCE_ELF_MMAP),$(FLAGS_LIBELF),-DLIBELF_MMAP),y)
-	BASIC_CFLAGS += -DLIBELF_MMAP
-endif
-
-ifndef NO_DWARF
-ifeq ($(origin PERF_HAVE_DWARF_REGS), undefined)
-	msg := $(warning DWARF register mappings have not been defined for architecture $(ARCH), DWARF support disabled);
 else
-	BASIC_CFLAGS := -DDWARF_SUPPORT $(LIBDW_CFLAGS) $(BASIC_CFLAGS)
-	BASIC_LDFLAGS := $(LIBDW_LDFLAGS) $(BASIC_LDFLAGS)
-	EXTLIBS += -lelf -ldw
-	LIB_OBJS += $(OUTPUT)util/probe-finder.o
-	LIB_OBJS += $(OUTPUT)util/dwarf-aux.o
-endif # PERF_HAVE_DWARF_REGS
-endif # NO_DWARF
-endif # NO_LIBELF
+    EXTLIBS := $(filter-out -lelf,$(EXTLIBS))
+
+    # Remove ELF/DWARF dependent codes
+    LIB_OBJS := $(filter-out $(OUTPUT)util/symbol-elf.o,$(LIB_OBJS))
+    LIB_OBJS := $(filter-out $(OUTPUT)util/probe-event.o,$(LIB_OBJS))
+    BUILTIN_OBJS := $(filter-out $(OUTPUT)builtin-probe.o,$(BUILTIN_OBJS))
+
+    # Use minimal symbol handling
+    LIB_OBJS += $(OUTPUT)util/symbol-minimal.o
+endif
 
 ifndef NO_LIBUNWIND
 	BASIC_CFLAGS += -DLIBUNWIND_SUPPORT
