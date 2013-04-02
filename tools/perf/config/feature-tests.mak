@@ -61,7 +61,7 @@ int main(void)
 }
 endef
 
-ifndef NO_NEWT
+ifdef CONFIG_NEWT
 define SOURCE_NEWT
 #include <newt.h>
 

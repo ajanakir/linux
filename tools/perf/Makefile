@@ -34,8 +34,6 @@ include config/utilities.mak
 #
 # Define WERROR=0 to disable treating any warnings as errors.
 #
-# Define NO_NEWT if you do not want TUI support.
-#
 # Define NO_DEMANGLE if you do not want C++ symbol demangling.
 #
 # Define NO_LIBELF if you do not want libelf dependency (e.g. cross-builds)
@@ -666,29 +664,29 @@ ifndef NO_LIBAUDIT
 	endif
 endif
 
-ifndef NO_NEWT
+ifdef CONFIG_NEWT
 	FLAGS_NEWT=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) -lnewt
-	ifneq ($(call try-cc,$(SOURCE_NEWT),$(FLAGS_NEWT),libnewt),y)
-		msg := $(warning newt not found, disables TUI support. Please install newt-devel or libnewt-dev);
-	else
-		# Fedora has /usr/include/slang/slang.h, but ubuntu /usr/include/slang.h
-		BASIC_CFLAGS += -I/usr/include/slang
-		BASIC_CFLAGS += -DNEWT_SUPPORT
-		EXTLIBS += -lnewt -lslang
-		LIB_OBJS += $(OUTPUT)ui/browser.o
-		LIB_OBJS += $(OUTPUT)ui/browsers/annotate.o
-		LIB_OBJS += $(OUTPUT)ui/browsers/hists.o
-		LIB_OBJS += $(OUTPUT)ui/browsers/map.o
-		LIB_OBJS += $(OUTPUT)ui/browsers/scripts.o
-		LIB_OBJS += $(OUTPUT)ui/tui/setup.o
-		LIB_OBJS += $(OUTPUT)ui/tui/util.o
-		LIB_OBJS += $(OUTPUT)ui/tui/helpline.o
-		LIB_OBJS += $(OUTPUT)ui/tui/progress.o
-		LIB_H += ui/browser.h
-		LIB_H += ui/browsers/map.h
-		LIB_H += ui/keysyms.h
-		LIB_H += ui/libslang.h
-	endif
+    ifneq ($(call try-cc,$(SOURCE_NEWT),$(FLAGS_NEWT),libnewt),y)
+        $(error newt not found. Please install newt-devel or libnewt-dev or disable CONFIG_NEWT)
+    endif
+
+    # Fedora has /usr/include/slang/slang.h, but ubuntu /usr/include/slang.h
+    BASIC_CFLAGS += -I/usr/include/slang
+    BASIC_CFLAGS += -DNEWT_SUPPORT
+    EXTLIBS += -lnewt -lslang
+    LIB_OBJS += $(OUTPUT)ui/browser.o
+    LIB_OBJS += $(OUTPUT)ui/browsers/annotate.o
+    LIB_OBJS += $(OUTPUT)ui/browsers/hists.o
+    LIB_OBJS += $(OUTPUT)ui/browsers/map.o
+    LIB_OBJS += $(OUTPUT)ui/browsers/scripts.o
+    LIB_OBJS += $(OUTPUT)ui/tui/setup.o
+    LIB_OBJS += $(OUTPUT)ui/tui/util.o
+    LIB_OBJS += $(OUTPUT)ui/tui/helpline.o
+    LIB_OBJS += $(OUTPUT)ui/tui/progress.o
+    LIB_H += ui/browser.h
+    LIB_H += ui/browsers/map.h
+    LIB_H += ui/keysyms.h
+    LIB_H += ui/libslang.h
 endif
 
 ifdef CONFIG_GTK2
