@@ -206,7 +206,7 @@ int main(void)
 endef
 endif
 
-ifndef NO_LIBAUDIT
+ifdef CONFIG_LIBAUDIT
 define SOURCE_LIBAUDIT
 #include <libaudit.h>
 

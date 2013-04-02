@@ -45,6 +45,11 @@ config LIBPERL
 config LIBPYTHON
     bool "Enable support for python scripting engine"
 
+config LIBAUDIT
+    bool "Enable support for libaudit"
+    help
+        Used for perf trace tool.
+
 config LIBNUMA
     bool "Enable support for libnuma"
     help

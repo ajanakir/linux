@@ -644,15 +644,13 @@ ifdef CONFIG_LIBUNWIND
 	LIB_OBJS += $(OUTPUT)util/unwind.o
 endif
 
-ifndef NO_LIBAUDIT
-	FLAGS_LIBAUDIT = $(ALL_CFLAGS) $(ALL_LDFLAGS) -laudit
-	ifneq ($(call try-cc,$(SOURCE_LIBAUDIT),$(FLAGS_LIBAUDIT),libaudit),y)
-		msg := $(warning No libaudit.h found, disables 'trace' tool, please install audit-libs-devel or libaudit-dev);
-	else
-		BASIC_CFLAGS += -DLIBAUDIT_SUPPORT
-		BUILTIN_OBJS += $(OUTPUT)builtin-trace.o
-		EXTLIBS += -laudit
-	endif
+ifdef CONFIG_LIBAUDIT
+    FLAGS_LIBAUDIT = $(ALL_CFLAGS) $(ALL_LDFLAGS) -laudit
+    ifneq ($(call try-cc,$(SOURCE_LIBAUDIT),$(FLAGS_LIBAUDIT),libaudit),y)
+        $(error No libaudit.h found, please install audit-libs-devel or libaudit-dev or disable CONFIG_LIBAUDIT)
+    endif
+    BUILTIN_OBJS += $(OUTPUT)builtin-trace.o
+    EXTLIBS += -laudit
 endif
 
 ifdef CONFIG_NEWT
