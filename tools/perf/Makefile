@@ -563,6 +563,11 @@ ifdef CONFIG_LIBELF
 		LIBDW_LDFLAGS := -L$(LIBDW_DIR)/lib
 	endif
 
+    FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
+    ifeq ($(call try-cc,$(SOURCE_ELF_MMAP),$(FLAGS_LIBELF),-DLIBELF_MMAP),y)
+	    BASIC_CFLAGS += -DLIBELF_MMAP
+    endif
+
     # libelf supported - what about dwarf?
     ifdef CONFIG_DWARF
         FLAGS_DWARF=$(ALL_CFLAGS) $(LIBDW_CFLAGS) -ldw -lelf $(LIBDW_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
@@ -570,14 +575,7 @@ ifdef CONFIG_LIBELF
             $(warning No libdw.h found or old libdw.h found or elfutils is older than 0.138.ables dwarf support.)
             $(error Please install new elfutils-devel/libdw-dev or disable CONFIG_DWARF);
         endif
-    endif
 
-    FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
-    ifeq ($(call try-cc,$(SOURCE_ELF_MMAP),$(FLAGS_LIBELF),-DLIBELF_MMAP),y)
-	    BASIC_CFLAGS += -DLIBELF_MMAP
-    endif
-
-    ifdef CONFIG_DWARF
         ifeq ($(origin PERF_HAVE_DWARF_REGS), undefined)
 	        msg := $(warning DWARF register mappings have not been defined for architecture $(ARCH), DWARF support disabled);
         else
