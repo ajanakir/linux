@@ -1,0 +1,2 @@
+config LIBPERL
+    bool "Enable support for perl scripting engine"

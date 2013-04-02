@@ -102,7 +102,7 @@ int main(void)
 endef
 endif
 
-ifndef NO_LIBPERL
+ifdef CONFIG_LIBPERL
 define SOURCE_PERL_EMBED
 #include <EXTERN.h>
 #include <perl.h>

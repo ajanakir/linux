@@ -27,6 +27,7 @@
 #include "../perf.h"
 #include "util.h"
 #include "trace-event.h"
+#include <linux/kconfig.h>
 
 struct scripting_context *scripting_context;
 
@@ -110,7 +111,7 @@ void setup_python_scripting(void)
 static void print_perl_unsupported_msg(void)
 {
 	fprintf(stderr, "Perl scripting not supported."
-		"  Install libperl and rebuild perf to enable it.\n"
+		"  Enable CONFIG_LIBPERL and rebuild perf.\n"
 		"For example:\n  # apt-get install libperl-dev (ubuntu)"
 		"\n  # yum install 'perl(ExtUtils::Embed)' (Fedora)"
 		"\n  etc.\n");
@@ -156,16 +157,16 @@ static void register_perl_scripting(struct scripting_ops *scripting_ops)
 	scripting_context = malloc(sizeof(struct scripting_context));
 }
 
-#ifdef NO_LIBPERL
-void setup_perl_scripting(void)
-{
-	register_perl_scripting(&perl_scripting_unsupported_ops);
-}
-#else
+#ifdef CONFIG_LIBPERL
 extern struct scripting_ops perl_scripting_ops;
 
 void setup_perl_scripting(void)
 {
 	register_perl_scripting(&perl_scripting_ops);
+}
+#else
+void setup_perl_scripting(void)
+{
+	register_perl_scripting(&perl_scripting_unsupported_ops);
 }
 #endif
