@@ -34,8 +34,6 @@ include config/utilities.mak
 #
 # Define WERROR=0 to disable treating any warnings as errors.
 #
-# Define NO_DEMANGLE if you do not want C++ symbol demangling.
-#
 # Define NO_BACKTRACE if you do not want stack backtrace debug feature
 #
 # Define NO_LIBNUMA if you do not want numa perf benchmark
@@ -571,7 +569,9 @@ ifdef CONFIG_LIBELF
 	endif
 else
     NO_DWARF := 1
-    NO_DEMANGLE := 1
+    ifdef CONFIG_DEMANGLE
+        $(error CONFIG_DEMANGLE depends on LIBELF)
+    endif
     ifdef CONFIG_LIBUNWIND
         $(error CONFIG_LIBUNWIND depends on LIBELF)
     endif
@@ -775,41 +775,37 @@ ifdef CONFIG_LIBPYTHON
     LANG_BINDINGS += $(OUTPUT)python/perf.so
 endif
 
-ifdef NO_DEMANGLE
-	BASIC_CFLAGS += -DNO_DEMANGLE
-else
-        ifdef HAVE_CPLUS_DEMANGLE
-		EXTLIBS += -liberty
-		BASIC_CFLAGS += -DHAVE_CPLUS_DEMANGLE
+ifdef CONFIG_DEMANGLE
+    ifdef HAVE_CPLUS_DEMANGLE
+        EXTLIBS += -liberty
+        BASIC_CFLAGS += -DHAVE_CPLUS_DEMANGLE
+    else
+        FLAGS_BFD=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) -DPACKAGE='perf' -lbfd
+        has_bfd := $(call try-cc,$(SOURCE_BFD),$(FLAGS_BFD),libbfd)
+        ifeq ($(has_bfd),y)
+            EXTLIBS += -lbfd
         else
-		FLAGS_BFD=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) -DPACKAGE='perf' -lbfd
-		has_bfd := $(call try-cc,$(SOURCE_BFD),$(FLAGS_BFD),libbfd)
-		ifeq ($(has_bfd),y)
-			EXTLIBS += -lbfd
-		else
-			FLAGS_BFD_IBERTY=$(FLAGS_BFD) -liberty
-			has_bfd_iberty := $(call try-cc,$(SOURCE_BFD),$(FLAGS_BFD_IBERTY),liberty)
-			ifeq ($(has_bfd_iberty),y)
-				EXTLIBS += -lbfd -liberty
-			else
-				FLAGS_BFD_IBERTY_Z=$(FLAGS_BFD_IBERTY) -lz
-				has_bfd_iberty_z := $(call try-cc,$(SOURCE_BFD),$(FLAGS_BFD_IBERTY_Z),libz)
-				ifeq ($(has_bfd_iberty_z),y)
-					EXTLIBS += -lbfd -liberty -lz
-				else
-					FLAGS_CPLUS_DEMANGLE=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) -liberty
-					has_cplus_demangle := $(call try-cc,$(SOURCE_CPLUS_DEMANGLE),$(FLAGS_CPLUS_DEMANGLE),demangle)
-					ifeq ($(has_cplus_demangle),y)
-						EXTLIBS += -liberty
-						BASIC_CFLAGS += -DHAVE_CPLUS_DEMANGLE
-					else
-						msg := $(warning No bfd.h/libbfd found, install binutils-dev[el]/zlib-static to gain symbol demangling)
-						BASIC_CFLAGS += -DNO_DEMANGLE
-					endif
-				endif
-			endif
-		endif
-	endif
+            FLAGS_BFD_IBERTY=$(FLAGS_BFD) -liberty
+            has_bfd_iberty := $(call try-cc,$(SOURCE_BFD),$(FLAGS_BFD_IBERTY),liberty)
+            ifeq ($(has_bfd_iberty),y)
+                EXTLIBS += -lbfd -liberty
+            else
+                FLAGS_BFD_IBERTY_Z=$(FLAGS_BFD_IBERTY) -lz
+                has_bfd_iberty_z := $(call try-cc,$(SOURCE_BFD),$(FLAGS_BFD_IBERTY_Z),libz)
+                ifeq ($(has_bfd_iberty_z),y)
+                    EXTLIBS += -lbfd -liberty -lz
+                else
+                    FLAGS_CPLUS_DEMANGLE=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) -liberty
+                    has_cplus_demangle := $(call try-cc,$(SOURCE_CPLUS_DEMANGLE),$(FLAGS_CPLUS_DEMANGLE),demangle)
+                    ifeq ($(has_cplus_demangle),y)
+                        EXTLIBS += -liberty
+                        BASIC_CFLAGS += -DHAVE_CPLUS_DEMANGLE
+                    endif
+                    $(error No bfd.h/libbfd found, install binutils-dev[el]/zlib-static to gain symbol demangling or unset CONFIG_DEMANGLE)
+                endif
+            endif
+        endif
+    endif
 endif
 
 ifeq ($(NO_PERF_REGS),0)

@@ -26,6 +26,10 @@ config LIBUNWIND
     bool "Enable support for libunwind"
     depends on HAVE_CFI_UNWIND_SUPPORT && LIBELF
 
+ config DEMANGLE
+    bool "Enable support for demangle"
+    depends on LIBELF
+
 config LIBPERL
     bool "Enable support for perl scripting engine"
 

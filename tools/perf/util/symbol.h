@@ -12,6 +12,7 @@
 #include <byteswap.h>
 #include <libgen.h>
 #include "build-id.h"
+#include <linux/kconfig.h>
 
 #ifdef LIBELF_SUPPORT
 #include <libelf.h>
@@ -29,7 +30,7 @@ static inline char *bfd_demangle(void __maybe_unused *v, const char *c, int i)
 	return cplus_demangle(c, i);
 }
 #else
-#ifdef NO_DEMANGLE
+#ifndef CONFIG_DEMANGLE
 static inline char *bfd_demangle(void __maybe_unused *v,
 				 const char __maybe_unused *c,
 				 int __maybe_unused i)
