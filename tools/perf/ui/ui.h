@@ -24,7 +24,7 @@ static inline int ui__init(void)
 static inline void ui__exit(bool wait_for_ok __maybe_unused) {}
 #endif
 
-#ifdef GTK2_SUPPORT
+#ifdef CONFIG_GTK2
 int perf_gtk__init(void);
 void perf_gtk__exit(bool wait_for_ok);
 #else
