@@ -672,7 +672,6 @@ ifdef CONFIG_NEWT
 
     # Fedora has /usr/include/slang/slang.h, but ubuntu /usr/include/slang.h
     BASIC_CFLAGS += -I/usr/include/slang
-    BASIC_CFLAGS += -DNEWT_SUPPORT
     EXTLIBS += -lnewt -lslang
     LIB_OBJS += $(OUTPUT)ui/browser.o
     LIB_OBJS += $(OUTPUT)ui/browsers/annotate.o

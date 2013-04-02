@@ -10,6 +10,7 @@
 #include <linux/list.h>
 #include <linux/rbtree.h>
 #include <pthread.h>
+#include <linux/kconfig.h>
 
 struct ins;
 
@@ -141,7 +142,7 @@ int symbol__tty_annotate(struct symbol *sym, struct map *map, int evidx,
 			 bool print_lines, bool full_paths, int min_pcnt,
 			 int max_lines);
 
-#ifdef NEWT_SUPPORT
+#ifdef CONFIG_NEWT
 int symbol__tui_annotate(struct symbol *sym, struct map *map, int evidx,
 			 struct hist_browser_timer *hbt);
 #else
