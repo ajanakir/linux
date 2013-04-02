@@ -530,6 +530,12 @@ PERFLIBS = $(LIB_FILE) $(LIBTRACEEVENT)
 ifneq ($(MAKECMDGOALS),clean)
 ifneq ($(MAKECMDGOALS),tags)
 
+-include arch/$(ARCH)/Makefile
+
+ifneq ($(OUTPUT),)
+	BASIC_CFLAGS += -I$(OUTPUT)
+endif
+
 # We choose to avoid "if .. else if .. else .. endif endif"
 # because maintaining the nesting to match is a pain.  If
 # we had "elif" things would have been much nicer...
@@ -565,25 +571,7 @@ ifdef CONFIG_LIBELF
             $(error Please install new elfutils-devel/libdw-dev or disable CONFIG_DWARF);
         endif
     endif
-else
-    ifdef CONFIG_DWARF
-        $(error CONFIG_DWARF depends on LIBELF)
-    endif
-    ifdef CONFIG_DEMANGLE
-        $(error CONFIG_DEMANGLE depends on LIBELF)
-    endif
-    ifdef CONFIG_LIBUNWIND
-        $(error CONFIG_LIBUNWIND depends on LIBELF)
-    endif
-endif
 
--include arch/$(ARCH)/Makefile
-
-ifneq ($(OUTPUT),)
-	BASIC_CFLAGS += -I$(OUTPUT)
-endif
-
-ifdef CONFIG_LIBELF
     FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
     ifeq ($(call try-cc,$(SOURCE_ELF_MMAP),$(FLAGS_LIBELF),-DLIBELF_MMAP),y)
 	    BASIC_CFLAGS += -DLIBELF_MMAP
@@ -602,6 +590,16 @@ ifdef CONFIG_LIBELF
     endif
 
 else
+    ifdef CONFIG_DWARF
+        $(error CONFIG_DWARF depends on LIBELF)
+    endif
+    ifdef CONFIG_DEMANGLE
+        $(error CONFIG_DEMANGLE depends on LIBELF)
+    endif
+    ifdef CONFIG_LIBUNWIND
+        $(error CONFIG_LIBUNWIND depends on LIBELF)
+    endif
+
     EXTLIBS := $(filter-out -lelf,$(EXTLIBS))
 
     # Remove ELF/DWARF dependent codes
