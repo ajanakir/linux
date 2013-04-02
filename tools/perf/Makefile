@@ -5,6 +5,9 @@ all:
 
 include config/utilities.mak
 
+# Read in config if it exists
+-include $(OUTPUT)include/config/auto.conf
+
 # Define V to have a more verbose compile.
 #
 # Define O to save output files in a separate directory.
@@ -203,6 +206,7 @@ ifneq ($(OUTPUT),)
 endif
 
 BASIC_CFLAGS = \
+	-I$(OUTPUT)include \
 	-Iutil/include \
 	-Iarch/$(ARCH)/include \
 	$(if $(objtree),-I$(objtree)/arch/$(ARCH)/include/generated/uapi) \
@@ -409,6 +413,7 @@ LIB_H += ui/helpline.h
 LIB_H += ui/progress.h
 LIB_H += ui/util.h
 LIB_H += ui/ui.h
+LIB_H += $(OUTPUT)include/generated/autoconf.h
 
 LIB_OBJS += $(OUTPUT)util/abspath.o
 LIB_OBJS += $(OUTPUT)util/alias.o
