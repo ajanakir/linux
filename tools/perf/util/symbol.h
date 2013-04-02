@@ -14,7 +14,7 @@
 #include "build-id.h"
 #include <linux/kconfig.h>
 
-#ifdef LIBELF_SUPPORT
+#ifdef CONFIG_LIBELF
 #include <libelf.h>
 #include <gelf.h>
 #endif
@@ -172,7 +172,7 @@ struct symsrc {
 	int fd;
 	enum dso_binary_type type;
 
-#ifdef LIBELF_SUPPORT
+#ifdef CONFIG_LIBELF
 	Elf *elf;
 	GElf_Ehdr ehdr;
 
