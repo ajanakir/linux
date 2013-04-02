@@ -192,7 +192,7 @@ int main(void)
 endef
 endif
 
-ifndef NO_BACKTRACE
+ifdef CONFIG_BACKTRACE
 define SOURCE_BACKTRACE
 #include <execinfo.h>
 #include <stdio.h>

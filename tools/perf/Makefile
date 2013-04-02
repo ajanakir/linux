@@ -31,8 +31,6 @@ include config/utilities.mak
 # Define EXTRA_CFLAGS=-m64 or EXTRA_CFLAGS=-m32 as appropriate for cross-builds.
 #
 # Define WERROR=0 to disable treating any warnings as errors.
-#
-# Define NO_BACKTRACE if you do not want stack backtrace debug feature
 
 $(OUTPUT)PERF-VERSION-FILE: .FORCE-PERF-VERSION-FILE
 	@$(SHELL_PATH) util/PERF-VERSION-GEN $(OUTPUT)
@@ -829,10 +827,10 @@ ifndef NO_ON_EXIT
 	endif
 endif
 
-ifndef NO_BACKTRACE
-       ifeq ($(call try-cc,$(SOURCE_BACKTRACE),,-DBACKTRACE_SUPPORT),y)
-               BASIC_CFLAGS += -DBACKTRACE_SUPPORT
-       endif
+ifdef CONFIG_BACKTRACE
+    ifneq ($(call try-cc,$(SOURCE_BACKTRACE),,-DBACKTRACE_SUPPORT),y)
+        $(error backtrace not supported. Unset CONFIG_BACKTRACE)
+   endif
 endif
 
 ifdef CONFIG_LIBNUMA

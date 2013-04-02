@@ -49,3 +49,6 @@ config LIBNUMA
     bool "Enable support for libnuma"
     help
         Used for 'perf bench numa mem' benchmark
+
+config BACKTRACE
+    bool "Enable support for stack backtrace debugging"
