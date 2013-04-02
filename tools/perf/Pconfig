@@ -15,12 +15,17 @@ config NEWT
 config GTK2
     bool "Enable GTK-based UI"
 
+config BIONIC
+    bool "Enable support for Bionic (e.g., Android platform)"
+    default n
+    select LIBC
+
 config LIBC
     bool "Development support for libc is available - glibc or bionic"
 
 config LIBELF
     bool "Enable support for libelf"
-    depends on LIBC
+    depends on !BIONIC && LIBC
 
 config LIBUNWIND
     bool "Enable support for libunwind"

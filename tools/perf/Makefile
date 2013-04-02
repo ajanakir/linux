@@ -206,8 +206,10 @@ BASIC_CFLAGS = \
 
 BASIC_LDFLAGS =
 
-ifeq ($(call try-cc,$(SOURCE_BIONIC),$(CFLAGS),bionic),y)
-	BIONIC := 1
+ifdef CONFIG_BIONIC
+    ifneq ($(call try-cc,$(SOURCE_BIONIC),$(CFLAGS),bionic),y)
+        $(error No anddroid api-level.h. Unset CONFIG_BIONIC to continue)
+    endif
 	EXTLIBS := $(filter-out -lrt,$(EXTLIBS))
 	EXTLIBS := $(filter-out -lpthread,$(EXTLIBS))
 	BASIC_CFLAGS += -I.
