@@ -87,7 +87,7 @@ ifdef PARSER_DEBUG
 endif
 
 CFLAGS = -fno-omit-frame-pointer -ggdb3 -funwind-tables -Wall -Wextra -std=gnu99 $(CFLAGS_WERROR) $(CFLAGS_OPTIMIZE) $(EXTRA_WARNINGS) $(EXTRA_CFLAGS) $(PARSER_DEBUG_CFLAGS)
-EXTLIBS = -lpthread -lrt -lelf -lm
+EXTLIBS = -lpthread -lrt -lm
 ALL_CFLAGS = $(CFLAGS) -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE
 ALL_LDFLAGS = $(LDFLAGS)
 STRIP ?= strip
@@ -541,6 +541,7 @@ endif
 # we had "elif" things would have been much nicer...
 
 ifdef CONFIG_LIBELF
+    EXTLIBS += -lelf
     FLAGS_LIBELF=$(ALL_CFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
 
     # try to compile with libelf support ...
@@ -570,7 +571,7 @@ ifdef CONFIG_LIBELF
 
     # libelf supported - what about dwarf?
     ifdef CONFIG_DWARF
-        FLAGS_DWARF=$(ALL_CFLAGS) $(LIBDW_CFLAGS) -ldw -lelf $(LIBDW_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
+        FLAGS_DWARF=$(ALL_CFLAGS) $(LIBDW_CFLAGS) -ldw $(LIBDW_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS)
         ifneq ($(call try-cc,$(SOURCE_DWARF),$(FLAGS_DWARF),libdw),y)
             $(warning No libdw.h found or old libdw.h found or elfutils is older than 0.138.ables dwarf support.)
             $(error Please install new elfutils-devel/libdw-dev or disable CONFIG_DWARF);
@@ -581,7 +582,7 @@ ifdef CONFIG_LIBELF
         else
             BASIC_CFLAGS := $(LIBDW_CFLAGS) $(BASIC_CFLAGS)
             BASIC_LDFLAGS := $(LIBDW_LDFLAGS) $(BASIC_LDFLAGS)
-            EXTLIBS += -lelf -ldw
+            EXTLIBS += -ldw
             LIB_OBJS += $(OUTPUT)util/probe-finder.o
             LIB_OBJS += $(OUTPUT)util/dwarf-aux.o
         endif # PERF_HAVE_DWARF_REGS
@@ -597,8 +598,6 @@ else
     ifdef CONFIG_LIBUNWIND
         $(error CONFIG_LIBUNWIND depends on LIBELF)
     endif
-
-    EXTLIBS := $(filter-out -lelf,$(EXTLIBS))
 
     # Remove ELF/DWARF dependent codes
     LIB_OBJS := $(filter-out $(OUTPUT)util/symbol-elf.o,$(LIB_OBJS))
