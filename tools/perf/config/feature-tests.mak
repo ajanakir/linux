@@ -167,7 +167,7 @@ int main(void)
 }
 endef
 
-ifndef NO_LIBUNWIND
+ifdef CONFIG_LIBUNWIND
 define SOURCE_LIBUNWIND
 #include <libunwind.h>
 #include <stdlib.h>

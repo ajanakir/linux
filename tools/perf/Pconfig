@@ -1,3 +1,14 @@
+config ARCH
+    string
+    option env="ARCH"
+
+config X86
+    def_bool y if ARCH = "x86"
+    select HAVE_CFI_UNWIND_SUPPORT
+
+config HAVE_CFI_UNWIND_SUPPORT
+    bool
+
 config NEWT
     bool "Enable newt-based TUI"
 
@@ -10,6 +21,10 @@ config LIBC
 config LIBELF
     bool "Enable support for libelf"
     depends on LIBC
+
+config LIBUNWIND
+    bool "Enable support for libunwind"
+    depends on HAVE_CFI_UNWIND_SUPPORT && LIBELF
 
 config LIBPERL
     bool "Enable support for perl scripting engine"

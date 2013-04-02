@@ -36,9 +36,6 @@ include config/utilities.mak
 #
 # Define NO_DEMANGLE if you do not want C++ symbol demangling.
 #
-# Define NO_LIBUNWIND if you do not want libunwind dependency for dwarf
-# backtrace post unwind.
-#
 # Define NO_BACKTRACE if you do not want stack backtrace debug feature
 #
 # Define NO_LIBNUMA if you do not want numa perf benchmark
@@ -575,15 +572,19 @@ ifdef CONFIG_LIBELF
 else
     NO_DWARF := 1
     NO_DEMANGLE := 1
-    NO_LIBUNWIND := 1
+    ifdef CONFIG_LIBUNWIND
+        $(error CONFIG_LIBUNWIND depends on LIBELF)
+    endif
 endif
 
 # There's only x86 (both 32 and 64) support for CFI unwind so far
 ifneq ($(ARCH),x86)
-	NO_LIBUNWIND := 1
+ifdef CONFIG_LIBUNWIND
+	$(error CONFIG_LIBUNWIND only supported for x86 architecture)
+endif
 endif
 
-ifndef NO_LIBUNWIND
+ifdef CONFIG_LIBUNWIND
 # for linking with debug library, run like:
 # make DEBUG=1 LIBUNWIND_DIR=/opt/libunwind/
 ifdef LIBUNWIND_DIR
@@ -593,10 +594,9 @@ endif
 
 FLAGS_UNWIND=$(LIBUNWIND_CFLAGS) $(ALL_CFLAGS) $(LIBUNWIND_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) $(LIBUNWIND_LIBS)
 ifneq ($(call try-cc,$(SOURCE_LIBUNWIND),$(FLAGS_UNWIND),libunwind),y)
-	msg := $(warning No libunwind found, disabling post unwind support. Please install libunwind-dev[el] >= 0.99);
-	NO_LIBUNWIND := 1
+    $(error No libunwind found. Please install libunwind-dev[el] >= 0.99 or disable CONFIG_LIBUNWIND)
 endif # Libunwind support
-endif # NO_LIBUNWIND
+endif
 
 -include arch/$(ARCH)/Makefile
 
@@ -636,7 +636,7 @@ else
     LIB_OBJS += $(OUTPUT)util/symbol-minimal.o
 endif
 
-ifndef NO_LIBUNWIND
+ifdef CONFIG_LIBUNWIND
 	BASIC_CFLAGS += -DLIBUNWIND_SUPPORT
 	EXTLIBS += $(LIBUNWIND_LIBS)
 	BASIC_CFLAGS := $(LIBUNWIND_CFLAGS) $(BASIC_CFLAGS)
