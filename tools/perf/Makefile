@@ -430,7 +430,6 @@ LIB_OBJS += $(OUTPUT)util/wrapper.o
 LIB_OBJS += $(OUTPUT)util/sigchain.o
 LIB_OBJS += $(OUTPUT)util/dso.o
 LIB_OBJS += $(OUTPUT)util/symbol.o
-LIB_OBJS += $(OUTPUT)util/symbol-elf.o
 LIB_OBJS += $(OUTPUT)util/color.o
 LIB_OBJS += $(OUTPUT)util/pager.o
 LIB_OBJS += $(OUTPUT)util/header.o
@@ -454,7 +453,6 @@ LIB_OBJS += $(OUTPUT)util/trace-event-scripting.o
 LIB_OBJS += $(OUTPUT)util/svghelper.o
 LIB_OBJS += $(OUTPUT)util/sort.o
 LIB_OBJS += $(OUTPUT)util/hist.o
-LIB_OBJS += $(OUTPUT)util/probe-event.o
 LIB_OBJS += $(OUTPUT)util/util.o
 LIB_OBJS += $(OUTPUT)util/xyarray.o
 LIB_OBJS += $(OUTPUT)util/cpumap.o
@@ -515,7 +513,6 @@ BUILTIN_OBJS += $(OUTPUT)builtin-stat.o
 BUILTIN_OBJS += $(OUTPUT)builtin-timechart.o
 BUILTIN_OBJS += $(OUTPUT)builtin-top.o
 BUILTIN_OBJS += $(OUTPUT)builtin-script.o
-BUILTIN_OBJS += $(OUTPUT)builtin-probe.o
 BUILTIN_OBJS += $(OUTPUT)builtin-kmem.o
 BUILTIN_OBJS += $(OUTPUT)builtin-lock.o
 BUILTIN_OBJS += $(OUTPUT)builtin-kvm.o
@@ -588,6 +585,10 @@ ifdef CONFIG_LIBELF
         endif # PERF_HAVE_DWARF_REGS
     endif
 
+    LIB_OBJS += $(OUTPUT)util/symbol-elf.o
+    LIB_OBJS += $(OUTPUT)util/probe-event.o
+    BUILTIN_OBJS += $(OUTPUT)builtin-probe.o
+
 else
     ifdef CONFIG_DWARF
         $(error CONFIG_DWARF depends on LIBELF)
@@ -598,11 +599,6 @@ else
     ifdef CONFIG_LIBUNWIND
         $(error CONFIG_LIBUNWIND depends on LIBELF)
     endif
-
-    # Remove ELF/DWARF dependent codes
-    LIB_OBJS := $(filter-out $(OUTPUT)util/symbol-elf.o,$(LIB_OBJS))
-    LIB_OBJS := $(filter-out $(OUTPUT)util/probe-event.o,$(LIB_OBJS))
-    BUILTIN_OBJS := $(filter-out $(OUTPUT)builtin-probe.o,$(BUILTIN_OBJS))
 
     # Use minimal symbol handling
     LIB_OBJS += $(OUTPUT)util/symbol-minimal.o
