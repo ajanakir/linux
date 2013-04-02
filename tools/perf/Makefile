@@ -577,27 +577,6 @@ else
     endif
 endif
 
-# There's only x86 (both 32 and 64) support for CFI unwind so far
-ifneq ($(ARCH),x86)
-ifdef CONFIG_LIBUNWIND
-	$(error CONFIG_LIBUNWIND only supported for x86 architecture)
-endif
-endif
-
-ifdef CONFIG_LIBUNWIND
-# for linking with debug library, run like:
-# make DEBUG=1 LIBUNWIND_DIR=/opt/libunwind/
-ifdef LIBUNWIND_DIR
-	LIBUNWIND_CFLAGS  := -I$(LIBUNWIND_DIR)/include
-	LIBUNWIND_LDFLAGS := -L$(LIBUNWIND_DIR)/lib
-endif
-
-FLAGS_UNWIND=$(LIBUNWIND_CFLAGS) $(ALL_CFLAGS) $(LIBUNWIND_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) $(LIBUNWIND_LIBS)
-ifneq ($(call try-cc,$(SOURCE_LIBUNWIND),$(FLAGS_UNWIND),libunwind),y)
-    $(error No libunwind found. Please install libunwind-dev[el] >= 0.99 or disable CONFIG_LIBUNWIND)
-endif # Libunwind support
-endif
-
 -include arch/$(ARCH)/Makefile
 
 ifneq ($(OUTPUT),)
@@ -637,6 +616,23 @@ else
 endif
 
 ifdef CONFIG_LIBUNWIND
+    # There's only x86 (both 32 and 64) support for CFI unwind so far
+    ifneq ($(ARCH),x86)
+	    $(error CONFIG_LIBUNWIND only supported for x86 architecture)
+    endif
+
+    # for linking with debug library, run like:
+    # make DEBUG=1 LIBUNWIND_DIR=/opt/libunwind/
+    ifdef LIBUNWIND_DIR
+	    LIBUNWIND_CFLAGS  := -I$(LIBUNWIND_DIR)/include
+	    LIBUNWIND_LDFLAGS := -L$(LIBUNWIND_DIR)/lib
+    endif
+
+    FLAGS_UNWIND=$(LIBUNWIND_CFLAGS) $(ALL_CFLAGS) $(LIBUNWIND_LDFLAGS) $(ALL_LDFLAGS) $(EXTLIBS) $(LIBUNWIND_LIBS)
+    ifneq ($(call try-cc,$(SOURCE_LIBUNWIND),$(FLAGS_UNWIND),libunwind),y)
+        $(error No libunwind found. Please install libunwind-dev[el] >= 0.99 or disable CONFIG_LIBUNWIND)
+    endif
+
 	BASIC_CFLAGS += -DLIBUNWIND_SUPPORT
 	EXTLIBS += $(LIBUNWIND_LIBS)
 	BASIC_CFLAGS := $(LIBUNWIND_CFLAGS) $(BASIC_CFLAGS)
