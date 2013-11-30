@@ -2309,7 +2309,8 @@ static int convert_name_to_addr(struct perf_probe_event *pev, const char *exec)
 	}
 	available_func_filter = strfilter__new(function, NULL);
 	if (map__load(map, filter_available_functions)) {
-		pr_err("Failed to load map.\n");
+		pr_err("Failed to find requested symbol in %s. Is it a global variable?\n",
+		       name);
 		goto out;
 	}
 
