@@ -563,6 +563,7 @@ static int get_entries(struct unwind_info *ui, unwind_entry_cb_t cb,
 {
 	unw_addr_space_t addr_space;
 	unw_cursor_t c;
+	unw_word_t prev_ip = 0;
 	int ret;
 
 	addr_space = unw_create_addr_space(&accessors, 0);
@@ -579,6 +580,10 @@ static int get_entries(struct unwind_info *ui, unwind_entry_cb_t cb,
 		unw_word_t ip;
 
 		unw_get_reg(&c, UNW_REG_IP, &ip);
+		if (ip == prev_ip)
+			break;
+		prev_ip = ip;
+
 		ret = entry(ip, ui->thread, ui->machine, cb, arg);
 	}
 
