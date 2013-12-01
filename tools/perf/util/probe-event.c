@@ -2208,6 +2208,9 @@ static struct strfilter *available_func_filter;
 static int filter_available_functions(struct map *map __maybe_unused,
 				      struct symbol *sym)
 {
+	if (available_func_filter == NULL)
+		return 0;
+
 	if (sym->binding == STB_GLOBAL &&
 	    strfilter__compare(available_func_filter, sym->name))
 		return 0;
@@ -2281,9 +2284,10 @@ static int convert_name_to_addr(struct perf_probe_event *pev, const char *exec)
 	struct perf_probe_point *pp = &pev->point;
 	struct symbol *sym;
 	struct map *map = NULL;
-	char *function = NULL, *name = NULL;
+	char *function = NULL, *name = NULL, *endptr;
 	int ret = -EINVAL;
 	unsigned long long vaddr = 0;
+	unsigned long fcn_addr = 0;
 
 	if (!pp->function) {
 		pr_warning("No function specified for uprobes");
@@ -2297,6 +2301,13 @@ static int convert_name_to_addr(struct perf_probe_event *pev, const char *exec)
 		goto out;
 	}
 
+	/* perhaps an address was given instead of a function name */
+	if (strncmp(function, "0x", 2) == 0) {
+		fcn_addr = strtoul(function, &endptr, 0);
+		if (endptr && *endptr != '\0')
+			fcn_addr = 0;
+	}
+
 	name = realpath(exec, NULL);
 	if (!name) {
 		pr_warning("Cannot find realpath for %s.\n", exec);
@@ -2307,22 +2318,30 @@ static int convert_name_to_addr(struct perf_probe_event *pev, const char *exec)
 		pr_warning("Cannot find appropriate DSO for %s.\n", exec);
 		goto out;
 	}
-	available_func_filter = strfilter__new(function, NULL);
+
+	if (fcn_addr == 0)
+		available_func_filter = strfilter__new(function, NULL);
+
 	if (map__load(map, filter_available_functions)) {
 		pr_err("Failed to find requested symbol in %s. Is it a global variable?\n",
 		       name);
 		goto out;
 	}
 
-	sym = map__find_symbol_by_name(map, function, NULL);
-	if (!sym) {
-		pr_warning("Cannot find %s in DSO %s\n", function, exec);
-		goto out;
+	if (fcn_addr) {
+		vaddr = fcn_addr + pp->offset + map->pgoff;
+	} else {
+		sym = map__find_symbol_by_name(map, function, NULL);
+		if (!sym) {
+			pr_warning("Cannot find %s in DSO %s\n", function, exec);
+			goto out;
+		}
+
+		if (map->start > sym->start)
+			vaddr = map->start;
+		vaddr += sym->start + pp->offset + map->pgoff;
 	}
 
-	if (map->start > sym->start)
-		vaddr = map->start;
-	vaddr += sym->start + pp->offset + map->pgoff;
 	pp->offset = 0;
 
 	if (!pev->event) {
