@@ -216,6 +216,10 @@ with appended unit character - B/K/M/G. The size is rounded up to have nearest
 pages power of two value. 0 falls back to write instead of mmap. Default size
 is 64M.
 
+--tod::
+Collect data for displaying time-of-day strings when printing events.
+
+
 SEE ALSO
 --------
 linkperf:perf-stat[1], linkperf:perf-list[1]

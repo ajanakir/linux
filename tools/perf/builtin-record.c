@@ -90,6 +90,7 @@ struct perf_record {
 	bool			no_buildid;
 	bool			no_buildid_cache;
 	long			samples;
+	bool			want_tod;
 };
 
 static int mmap_next_segment(struct perf_record *rec, off_t offset)
@@ -556,6 +557,12 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 	rec->session = session;
 
 	perf_record__init_features(rec);
+
+	if (rec->want_tod) {
+		err = perf_session__get_reftime(session);
+		if (err < 0)
+			goto out_delete_session;
+	}
 
 	if (forks) {
 		err = perf_evlist__prepare_workload(evsel_list, &opts->target,
@@ -1071,6 +1078,8 @@ const struct option record_options[] = {
 	OPT_CALLBACK('O', "out-pages", &record.mmap.out_pages, "pages",
 		"Number of pages or size with units to use for output (default 64M)",
 		perf_evlist__parse_out_pages),
+	OPT_BOOLEAN(0, "tod", &record.want_tod,
+		    "Collect data for time-of-day strings"),
 	OPT_END()
 };
 
@@ -1148,6 +1157,9 @@ int cmd_record(int argc, const char **argv, const char *prefix __maybe_unused)
 		err = -EINVAL;
 		goto out_free_fd;
 	}
+
+	if (rec->want_tod)
+		rec->opts.sample_time = 1;
 
 	err = __cmd_record(&record, argc, argv);
 
