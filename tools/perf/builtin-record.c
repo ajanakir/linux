@@ -29,9 +29,12 @@
 #include <unistd.h>
 #include <sched.h>
 #include <sys/mman.h>
+#include <setjmp.h>
 
 /* output file mmap'ed N chunks at a time */
 #define MMAP_OUTPUT_SIZE   (64*1024*1024)
+static sigjmp_buf mmap_jmp;
+static bool mmap_jmp_set;
 
 #ifndef HAVE_ON_EXIT_SUPPORT
 #ifndef ATEXIT_MAX
@@ -141,6 +144,7 @@ static int do_mmap_output(struct perf_record *rec, void *buf, size_t size)
 {
 	u64 remaining;
 	off_t offset;
+	volatile size_t total_len = 0;
 
 	if (rec->mmap.addr == NULL) {
 next_segment:
@@ -157,23 +161,29 @@ next_segment:
 	 * space write what we can then go back and create the
 	 * next segment
 	 */
-	if (size > remaining) {
-		memcpy(rec->mmap.addr + rec->mmap.offset, buf, remaining);
+	mmap_jmp_set = true;
+	if (setjmp(mmap_jmp) != 0) {
+		pr_err("mmap copy failed.\n");
+		return -1;
+	}
+	if (size-total_len > remaining) {
+		memcpy(rec->mmap.addr + rec->mmap.offset, buf+total_len, remaining);
 		rec->bytes_written += remaining;
 
-		size -= remaining;
-		buf  += remaining;
+		total_len += remaining;
 
 		munmap(rec->mmap.addr, rec->mmap.out_size);
 		goto next_segment;
 	}
 
 	/* more data to copy and it fits in the current segment */
-	if (size) {
-		memcpy(rec->mmap.addr + rec->mmap.offset, buf, size);
+	if (size - total_len) {
+		memcpy(rec->mmap.addr + rec->mmap.offset, buf+total_len, size-total_len);
 		rec->bytes_written += size;
 		rec->mmap.offset += size;
 	}
+
+	mmap_jmp_set = false;
 
 	return 0;
 }
@@ -271,6 +281,9 @@ static void sig_handler(int sig)
 {
 	if (sig == SIGCHLD)
 		child_finished = 1;
+
+	if (sig == SIGBUS && mmap_jmp_set)
+		longjmp(mmap_jmp, 1);
 
 	done = 1;
 	signr = sig;
@@ -532,6 +545,7 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 	signal(SIGINT, sig_handler);
 	signal(SIGUSR1, sig_handler);
 	signal(SIGTERM, sig_handler);
+	signal(SIGBUS, sig_handler);
 
 	session = perf_session__new(file, false, NULL);
 	if (session == NULL) {
