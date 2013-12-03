@@ -124,3 +124,8 @@ ssize_t perf_data_file__write(struct perf_data_file *file,
 {
 	return writen(file->fd, buf, size);
 }
+
+void perf_data_file__unlink(struct perf_data_file *file)
+{
+	unlink(file->path);
+}

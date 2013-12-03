@@ -44,6 +44,7 @@ static inline unsigned long perf_data_file__size(struct perf_data_file *file)
 
 int perf_data_file__open(struct perf_data_file *file);
 void perf_data_file__close(struct perf_data_file *file);
+void perf_data_file__unlink(struct perf_data_file *file);
 ssize_t perf_data_file__write(struct perf_data_file *file,
 			      void *buf, size_t size);
 

@@ -731,6 +731,7 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 
 out_delete_session:
 	perf_session__delete(session);
+	perf_data_file__unlink(session->file);
 	return err;
 }
 
