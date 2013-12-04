@@ -1,0 +1,164 @@
+The perf-full-monty branch contains various patches and enhancements to perf
+which are extremely useful to me.
+
+1. Time-of-day correlation for events
+
+That random number that is perf_clock does not correlate to any exported
+clock source and hence timestamps used by any applications. Correlating
+perf_events to app logs are important -- an essential feature for me.
+
+
+The method used here is to export perf_clock to userspace as a posix clock
+(Thank you Pawel Moll):
+
+#define CLOCK_PERF         14
+
+	if (clock_gettime(CLOCK_PERF, &ts) != 0) {
+	}
+
+To make use of the time-of-day changes you need to build a module for your
+kernel version and load it (code is at the end of this file). It should work for
+kernels 2.6.38 and on (as long as posix_timers_register_clock and local_clock
+are exported).
+
+When recording events add the time-of-day option (--tod):
+`perf record --tod ...`
+
+This option adds a reference time to the header to correlate perf_clock to
+time-of-day. It is not perfect and does not handle NTP updates or a user
+changing the dates (I have patches for that, just not in this set yet). Long
+running perf-record sessions may see small drifts as the correlation is taken
+at startup.
+
+If the data file contains the reftime analysis commands will see it and output
+times as time-of-day rather than perf-clock timestamps.
+
+Exporting perf_clock to userspace also allows 'perf kvm stat live' and the
+scheduling daemon to work better -- no flush timestamp errors.
+
+
+2. New sub-commands in perf sched for task scheduling analysis
+
+Scheduling analysis shows how long a process goes between schedule in events,
+how it runs once scheduled and the scheduling delay (time between wakeup and
+schedule in; non-realtime processes only). If callchains are requested a stack
+dump snippet is displayed showing where the task is when scheduled out. Useful
+for seeing when a task is preempted versus blocking by design.
+
+Record data to a file and then analyze:
+* perf sched record -g -S [--tod] ...
+* perf sched timehist
+
+See man page for output options (process tree, summary only, specific tasks,
+time windows of interest).
+
+Add -e kvm:kvm_entry,kvm:kvm_exit to the record command to also dump entry/exit
+analysis of VMs along with the scheduling output.
+
+There is also a daemon option which keep N-seconds of data in memory (flight
+recorder mode). Scheduling analysis can be dumped to a file on demand. This is
+useful (for example) to debug sporadic problems where you do not want to run a
+record session for hours to days. When a problem occurs and you want to see CPU
+scheduling history tell the daemon to dump the events to a file:
+
+* perf sched daemon -g -o /tmp/schedmon
+* kill -HUP <pid>
+
+The -C option compresses the output file when writing it. Add the -K option to
+add KVM events and corresponding analysis.
+
+
+3. Enhancements to perf trace
+
+perf-record is changed to create the data file using mmap rather than write.
+This is required for tracing all processes (perf trace record -a) which
+otherwise has an ugly feedback loop.
+
+Show timestamps as time-of-day: `perf trace -TT`
+
+RHEL6 compatibility: perf trace now works properly on RHEL6.
+
+Autodetect bitness of process (32-bit/64-bit). Syscall nr to name conversions
+are dependent on bitness of the task -- 32-bit processes on a 64-bit kernel
+have a different table than 64-bit processes. This branch contains patches to
+autodetect the task bitness and do the proper conversion. When analyzing a data
+file offbox the symfs is required to work properly.
+
+
+4. perf probe
+
+Improved error message when function now found. probe code filters non-global
+symbols.
+
+Specify relative address within executable: This allows probing functions in
+system libraries that otherwise cannot be probed due to code design
+limitations. e.g., any versioned symbol (name contains @) and local functions.
+
+
+5. Refining analysis
+   a. time window - only analyze events within given start,stop times
+   b. pid and tid - only analyze events for given pid's and/or tid's
+   c. callchain - only show kernel or user stacks (script/timehist)
+
+
+6. Miscellaneous
+   a. DSO lookups with symfs option: checks for all dso's in a single directory
+   b. build perf without builtin tests: make NO_PERF_TESTS=1 ...
+
+------------------------------------ Cut Here ----------------------------------
+/*
+ * Implements CLOCK_PERF.
+ *
+ * perf_clock is not exported, but for as long as I can remember perf_clock
+ * is local_clock which is exported. Make use of that.
+ *
+ * posix clock implementation by Pawel Moll
+ *     https://lkml.org/lkml/2013/3/14/523
+ *
+ * module by David Ahern, December 2013
+ */
+
+#include <linux/version.h>
+#include <linux/module.h>
+#include <linux/types.h>
+#include <linux/kernel.h>
+#include <linux/posix-timers.h>
+
+#define CLOCK_PERF         14
+
+static int perf_posix_clock_getres(const clockid_t which_clock,
+	                struct timespec *tp)
+{
+	*tp = ns_to_timespec(TICK_NSEC);
+	return 0;
+}
+
+static int perf_posix_clock_get(clockid_t which_clock, struct timespec *tp)
+{
+	*tp = ns_to_timespec(local_clock());
+	return 0;
+}
+
+
+static struct k_clock perf_posix_clock = {
+	.clock_getres = perf_posix_clock_getres,
+	.clock_get = perf_posix_clock_get,
+};
+
+static int perf_posix_clock_init(void)
+{
+	/* register this character driver */
+	posix_timers_register_clock(CLOCK_PERF, &perf_posix_clock);
+
+	printk(KERN_INFO "perf_clock clock registered\n");
+
+	/* no API to unregister a clock so this module cannot be unloaded */
+	__module_get(THIS_MODULE);
+
+	return 0;
+}
+
+module_init(perf_posix_clock_init);
+
+MODULE_AUTHOR("David Ahern");
+MODULE_LICENSE("GPL");
