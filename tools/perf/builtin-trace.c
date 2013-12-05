@@ -1460,7 +1460,7 @@ static size_t syscall__scnprintf_args(struct syscall *sc, char *bf, size_t size,
 {
 	size_t printed = 0;
 
-	if (sc->tp_format != NULL) {
+	if ((sc->tp_format != NULL) && (sc->tp_format->format.fields != NULL)) {
 		struct format_field *field;
 		u8 bit = 1;
 		struct syscall_arg arg = {
