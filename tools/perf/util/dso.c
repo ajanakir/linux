@@ -123,6 +123,13 @@ int dso__binary_type_file(struct dso *dso, enum dso_binary_type type,
 		snprintf(file, size, "%s", dso->long_name);
 		break;
 
+	case DSO_BINARY_TYPE__SHORTNAME:
+		if (symbol_conf.symfs[0])
+			snprintf(file, size, "%s/%s", symbol_conf.symfs, dso->short_name);
+		else
+			ret = -1;
+		break;
+
 	default:
 	case DSO_BINARY_TYPE__KALLSYMS:
 	case DSO_BINARY_TYPE__GUEST_KALLSYMS:
