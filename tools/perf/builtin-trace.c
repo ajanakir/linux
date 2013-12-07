@@ -998,20 +998,26 @@ static struct syscall_fmt {
 	{ .name	    = "poll",	    .errmsg = true, .timeout = true, },
 	{ .name	    = "ppoll",	    .errmsg = true, .timeout = true, },
 	{ .name	    = "pread",	    .errmsg = true, .alias = "pread64",
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* buf */ }, },
 	{ .name	    = "preadv",	    .errmsg = true, .alias = "pread",
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* iov */ }, },
 	{ .name	    = "prlimit64",  .errmsg = true, STRARRAY(1, resource, rlimit_resources), },
 	{ .name	    = "pwrite",	    .errmsg = true, .alias = "pwrite64",
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* buf */ }, },
 	{ .name	    = "pwritev",    .errmsg = true,
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* iov */ }, },
 	{ .name	    = "read",	    .errmsg = true,
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* buf */ }, },
 	{ .name	    = "readlinkat", .errmsg = true,
 	  .arg_scnprintf = { [0] = SCA_FDAT, /* dfd */ }, }, 
 	{ .name	    = "readv",	    .errmsg = true,
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* iov */ }, },
 	{ .name	    = "recvfrom",   .errmsg = true,
 	  .arg_scnprintf = { [3] = SCA_MSG_FLAGS, /* flags */ }, },
 	{ .name	    = "recvmmsg",   .errmsg = true,
@@ -1059,9 +1065,11 @@ static struct syscall_fmt {
 	{ .name	    = "utimensat",  .errmsg = true,
 	  .arg_scnprintf = { [0] = SCA_FDAT, /* dirfd */ }, },
 	{ .name	    = "write",	    .errmsg = true,
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* buf */ }, },
 	{ .name	    = "writev",	    .errmsg = true,
-	  .arg_scnprintf = { [0] = SCA_FD, /* fd */ }, }, 
+	  .arg_scnprintf = { [0] = SCA_FD,  /* fd */
+			     [1] = SCA_HEX, /* iov */ }, },
 };
 
 static int syscall_fmt__cmp(const void *name, const void *fmtp)
