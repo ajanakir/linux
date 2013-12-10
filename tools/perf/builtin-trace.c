@@ -1378,14 +1378,24 @@ static int syscall__set_arg_fmts(struct syscall *sc)
 	struct format_field *field;
 	int idx = 0;
 
-	sc->arg_scnprintf = calloc(sc->tp_format->format.nr_fields - 1, sizeof(void *));
+	field = sc->tp_format->format.fields;
+	/* drop nr field - not relevant here; does not exist on older kernels */
+	if (field && strcmp(field->name, "nr") == 0) {
+		struct format_field *next = field->next;
+
+		free_format_field(field);
+		sc->tp_format->format.fields = next;
+		sc->tp_format->format.nr_fields--;
+	}
+
+	sc->arg_scnprintf = calloc(sc->tp_format->format.nr_fields, sizeof(void *));
 	if (sc->arg_scnprintf == NULL)
 		return -1;
 
 	if (sc->fmt)
 		sc->arg_parm = sc->fmt->arg_parm;
 
-	for (field = sc->tp_format->format.fields->next; field; field = field->next) {
+	for (field = sc->tp_format->format.fields; field; field = field->next) {
 		if (sc->fmt && sc->fmt->arg_scnprintf[idx])
 			sc->arg_scnprintf[idx] = sc->fmt->arg_scnprintf[idx];
 		else if (field->flags & FIELD_IS_POINTER)
@@ -1470,7 +1480,7 @@ static size_t syscall__scnprintf_args(struct syscall *sc, char *bf, size_t size,
 			.thread = thread,
 		};
 
-		for (field = sc->tp_format->format.fields->next; field;
+		for (field = sc->tp_format->format.fields; field;
 		     field = field->next, ++arg.idx, bit <<= 1) {
 			if (arg.mask & bit)
 				continue;
