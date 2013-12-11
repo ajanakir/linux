@@ -1518,6 +1518,8 @@ void perf_evsel__print_ip(struct perf_evsel *evsel, union perf_event *event,
 		callchain_cursor_commit(&callchain_cursor);
 
 		while (stack_depth) {
+			u64 addr = 0;
+
 			node = callchain_cursor_current(&callchain_cursor);
 			if (!node)
 				break;
@@ -1528,10 +1530,13 @@ void perf_evsel__print_ip(struct perf_evsel *evsel, union perf_event *event,
 			if (print_ip)
 				printf("%c%16" PRIx64, s, node->ip);
 
+			if (node->map)
+				addr = node->map->map_ip(node->map, node->ip);
+
 			if (print_sym) {
 				printf(" ");
 				if (print_symoffset) {
-					al.addr = node->ip;
+					al.addr = addr;
 					al.map  = node->map;
 					symbol__fprintf_symname_offs(node->sym, &al, stdout);
 				} else
