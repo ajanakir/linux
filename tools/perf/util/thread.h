@@ -4,6 +4,7 @@
 #include <linux/rbtree.h>
 #include <linux/list.h>
 #include <unistd.h>
+#include <libaudit.h>
 #include <sys/types.h>
 #include "symbol.h"
 #include <strlist.h>
@@ -14,6 +15,9 @@ struct thread {
 		struct list_head node;
 	};
 	struct map_groups	mg;
+#ifdef HAVE_LIBAUDIT_SUPPORT
+	int			audit_machine;  /* type for libaudit calls */
+#endif
 	pid_t			pid_; /* Not all tools update this */
 	pid_t			tid;
 	pid_t			ppid;

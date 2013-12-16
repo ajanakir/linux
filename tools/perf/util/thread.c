@@ -7,6 +7,7 @@
 #include "util.h"
 #include "debug.h"
 #include "comm.h"
+#include "audit.h"
 
 struct thread *thread__new(pid_t pid, pid_t tid)
 {
@@ -20,6 +21,7 @@ struct thread *thread__new(pid_t pid, pid_t tid)
 		thread->tid = tid;
 		thread->ppid = -1;
 		INIT_LIST_HEAD(&thread->comm_list);
+		audit_machine__init_thread(thread);
 
 		comm_str = malloc(32);
 		if (!comm_str)
@@ -115,6 +117,8 @@ void thread__insert_map(struct thread *thread, struct map *map)
 {
 	map_groups__fixup_overlappings(&thread->mg, map, verbose, stderr);
 	map_groups__insert(&thread->mg, map);
+
+	audit_machine__update_thread(thread, map);
 }
 
 int thread__fork(struct thread *thread, struct thread *parent, u64 timestamp)
@@ -136,6 +140,7 @@ int thread__fork(struct thread *thread, struct thread *parent, u64 timestamp)
 			return -ENOMEM;
 
 	thread->ppid = parent->tid;
+	audit_machine__fork_thread(thread, parent);
 
 	return 0;
 }
