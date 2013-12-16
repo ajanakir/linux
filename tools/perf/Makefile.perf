@@ -485,6 +485,7 @@ endif
 
 ifndef NO_LIBAUDIT
   BUILTIN_OBJS += $(OUTPUT)builtin-trace.o
+  BUILTIN_OBJS += $(OUTPUT)util/audit.o
 endif
 
 ifndef NO_SLANG
