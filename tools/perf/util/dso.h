@@ -167,4 +167,6 @@ static inline bool dso__is_kcore(struct dso *dso)
 	       dso->data_type == DSO_BINARY_TYPE__GUEST_KCORE;
 }
 
+int dso_is_64bit(struct dso *dso);
+
 #endif /* __PERF_DSO */

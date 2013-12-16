@@ -541,6 +541,43 @@ static int dso__swap_init(struct dso *dso, unsigned char eidata)
 	return 0;
 }
 
+int dso_is_64bit(struct dso *dso)
+{
+	int rc = -1;
+	int fd;
+	Elf *elf;
+
+	/* TO-DO: this is ugly ... symfs, buildid correlation ...
+	 *        need to leverage the symbol loading iterations.
+	 *        Until then this works pretty well for most cases.
+	 */
+	fd = open(dso->long_name, O_RDONLY);
+	if (fd < 0) {
+		if (symbol_conf.symfs[0]) {
+			char name[PATH_MAX];
+
+			scnprintf(name, sizeof(name), "%s/%s", symbol_conf.symfs, name);
+			fd = open(name, O_RDONLY);
+		}
+	}
+	if (fd < 0)
+		return -1;
+
+	elf = elf_begin(fd, PERF_ELF_C_READ_MMAP, NULL);
+	if (elf == NULL)
+		goto out_close;
+
+	rc = (gelf_getclass(elf) == ELFCLASS64);
+
+out_close:
+	if (elf)
+		elf_end(elf);
+
+	close(fd);
+
+	return rc;
+}
+
 bool symsrc__possibly_runtime(struct symsrc *ss)
 {
 	return ss->dynsym || ss->opdsec;
