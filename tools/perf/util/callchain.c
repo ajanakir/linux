@@ -15,9 +15,19 @@
 #include <errno.h>
 #include <math.h>
 
+#include "perf.h"
 #include "hist.h"
 #include "util.h"
+#include "parse-options.h"
 #include "callchain.h"
+
+#define CALLCHAIN_HELP "setup and enables call-graph (stack chain/backtrace) recording: "
+
+#ifdef HAVE_LIBUNWIND_SUPPORT
+const char record_callchain_help[] = CALLCHAIN_HELP "fp dwarf";
+#else
+const char record_callchain_help[] = CALLCHAIN_HELP "fp";
+#endif
 
 __thread struct callchain_cursor callchain_cursor;
 
@@ -529,5 +539,130 @@ int callchain_cursor_append(struct callchain_cursor *cursor,
 
 	cursor->last = &node->next;
 
+	return 0;
+}
+#ifdef HAVE_LIBUNWIND_SUPPORT
+static int get_stack_size(char *str, unsigned long *_size)
+{
+	char *endptr;
+	unsigned long size;
+	unsigned long max_size = round_down(USHRT_MAX, sizeof(u64));
+
+	size = strtoul(str, &endptr, 0);
+
+	do {
+		if (*endptr)
+			break;
+
+		size = round_up(size, sizeof(u64));
+		if (!size || size > max_size)
+			break;
+
+		*_size = size;
+		return 0;
+
+	} while (0);
+
+	pr_err("callchain: Incorrect stack dump size (max %ld): %s\n",
+	       max_size, str);
+	return -1;
+}
+#endif /* HAVE_LIBUNWIND_SUPPORT */
+
+int record_parse_callchain(const char *arg, struct perf_record_opts *opts)
+{
+	char *tok, *name, *saveptr = NULL;
+	char *buf;
+	int ret = -1;
+
+	/* We need buffer that we know we can write to. */
+	buf = malloc(strlen(arg) + 1);
+	if (!buf)
+		return -ENOMEM;
+
+	strcpy(buf, arg);
+
+	tok = strtok_r((char *)buf, ",", &saveptr);
+	name = tok ? : (char *)buf;
+
+	do {
+		/* Framepointer style */
+		if (!strncmp(name, "fp", sizeof("fp"))) {
+			if (!strtok_r(NULL, ",", &saveptr)) {
+				opts->call_graph = CALLCHAIN_FP;
+				ret = 0;
+			} else
+				pr_err("callchain: No more arguments needed for -g fp\n");
+			break;
+
+#ifdef HAVE_LIBUNWIND_SUPPORT
+		/* Dwarf style */
+		} else if (!strncmp(name, "dwarf", sizeof("dwarf"))) {
+			const unsigned long default_stack_dump_size = 8192;
+
+			ret = 0;
+			opts->call_graph = CALLCHAIN_DWARF;
+			opts->stack_dump_size = default_stack_dump_size;
+
+			tok = strtok_r(NULL, ",", &saveptr);
+			if (tok) {
+				unsigned long size = 0;
+
+				ret = get_stack_size(tok, &size);
+				opts->stack_dump_size = size;
+			}
+#endif /* HAVE_LIBUNWIND_SUPPORT */
+		} else {
+			pr_err("callchain: Unknown --call-graph option value: %s\n",
+			       arg);
+			break;
+		}
+
+	} while (0);
+
+	free(buf);
+	return ret;
+}
+
+static void callchain_debug(struct perf_record_opts *opts)
+{
+	pr_debug("callchain: type %d\n", opts->call_graph);
+
+	if (opts->call_graph == CALLCHAIN_DWARF)
+		pr_debug("callchain: stack dump size %d\n",
+			 opts->stack_dump_size);
+}
+
+int record_parse_callchain_opt(const struct option *opt,
+			       const char *arg,
+			       int unset)
+{
+	struct perf_record_opts *opts = opt->value;
+	int ret;
+
+	/* --no-call-graph */
+	if (unset) {
+		opts->call_graph = CALLCHAIN_NONE;
+		pr_debug("callchain: disabled\n");
+		return 0;
+	}
+
+	ret = record_parse_callchain(arg, opts);
+	if (!ret)
+		callchain_debug(opts);
+
+	return ret;
+}
+
+int record_callchain_opt(const struct option *opt,
+			 const char *arg __maybe_unused,
+			 int unset __maybe_unused)
+{
+	struct perf_record_opts *opts = opt->value;
+
+	if (opts->call_graph == CALLCHAIN_NONE)
+		opts->call_graph = CALLCHAIN_FP;
+
+	callchain_debug(opts);
 	return 0;
 }
