@@ -1160,6 +1160,7 @@ fail:
 
 struct trace {
 	struct perf_tool	tool;
+	const char *machine_str;
 	int default_machine;    /* default audit machine */
 	struct {
 		int		open_id;
@@ -1604,6 +1605,14 @@ static void thread__update_stats(struct thread_trace *ttrace,
 	update_stats(stats, duration);
 }
 
+static int trace__get_machine(struct trace *trace, struct thread *thread)
+{
+	if (trace->machine_str)
+		return trace->default_machine;
+
+	return audit_machine__from_thread(thread);
+}
+
 static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 			    struct perf_sample *sample)
 {
@@ -1620,7 +1629,7 @@ static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 	if (thread == NULL)
 		return -1;
 
-	am = audit_machine__from_thread(thread);
+	am = trace__get_machine(trace, thread);
 	sc = trace__syscall_info(trace, evsel, id, am);
 	if (sc == NULL)
 		return -1;
@@ -1675,7 +1684,7 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 	if (thread == NULL)
 		return -1;
 
-	am = audit_machine__from_thread(thread);
+	am = trace__get_machine(trace, thread);
 	sc = trace__syscall_info(trace, evsel, id, am);
 	if (sc == NULL)
 		return -1;
@@ -2368,6 +2377,8 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 		    "Show only syscall summary with statistics"),
 	OPT_BOOLEAN('S', "with-summary", &trace.summary,
 		    "Show all syscalls and summary with statistics"),
+	OPT_STRING('M', NULL, &trace.machine_str, "machine type",
+		     "Force machine type for converting system calls"),
 	OPT_END()
 	};
 	int err, am;
@@ -2377,6 +2388,14 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 		return trace__record(argc-2, &argv[2]);
 
 	argc = parse_options(argc, argv, trace_options, trace_usage, 0);
+
+	if (trace.machine_str) {
+		trace.default_machine = audit_machine__parse_str(trace.machine_str);
+		if (trace.default_machine < 0) {
+			pr_err("Invalid machine type\n");
+			return -EINVAL;
+		}
+	}
 
 	/* lookup id for open syscall for default machine */
 	am = trace.default_machine;

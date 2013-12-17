@@ -1,3 +1,5 @@
+#include <string.h>
+#include <errno.h>
 #include "thread.h"
 #include "map.h"
 #include "audit.h"
@@ -33,4 +35,16 @@ void audit_machine__update_thread(struct thread *thread, struct map *map)
 
 	if (!is_64)
 		thread->audit_machine = MACH_X86;
+}
+
+int audit_machine__parse_str(const char *machine_str)
+{
+	int am = -EINVAL;
+
+	if (strcmp(machine_str, "x86") == 0)
+		am = MACH_X86;
+	else if (strcmp(machine_str, "x86_64") == 0)
+		am = MACH_86_64;
+
+	return am;
 }

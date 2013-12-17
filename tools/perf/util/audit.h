@@ -15,6 +15,8 @@ static inline int audit_machine__from_thread(struct thread *thread)
 	return thread->audit_machine;
 }
 
+int audit_machine__parse_str(const char *machine_str);
+
 #else
 
 static inline void audit_machine__init_thread(struct thread *thread)
