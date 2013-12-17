@@ -14,11 +14,11 @@
 #include "util/time-utils.h"
 #include "util/parse-events.h"
 
-#include <libaudit.h>
 #include <stdlib.h>
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <linux/futex.h>
+#include "audit.h"
 
 /* For older distros: */
 #ifndef MAP_STACK
@@ -1415,12 +1415,13 @@ static int syscall__set_arg_fmts(struct syscall *sc)
 	return 0;
 }
 
-static int trace__read_syscall_info(struct trace *trace, int id)
+static int trace__read_syscall_info(struct trace *trace, int id, int am)
 {
 	char tp_name[128];
 	struct syscall *sc;
-	const char *name = audit_syscall_to_name(id, trace->default_machine);
+	const char *name;
 
+	name = audit_syscall_to_name(id, am);
 	if (name == NULL)
 		return -1;
 
@@ -1535,7 +1536,7 @@ typedef int (*tracepoint_handler)(struct trace *trace, struct perf_evsel *evsel,
 				  struct perf_sample *sample);
 
 static struct syscall *trace__syscall_info(struct trace *trace,
-					   struct perf_evsel *evsel, int id)
+					   struct perf_evsel *evsel, int id, int am)
 {
 
 	if (id < 0) {
@@ -1559,7 +1560,7 @@ static struct syscall *trace__syscall_info(struct trace *trace,
 	}
 
 	if ((id > trace->syscalls.max || trace->syscalls.table[id].name == NULL) &&
-	    trace__read_syscall_info(trace, id))
+	    trace__read_syscall_info(trace, id, am))
 		goto out_cant_read;
 
 	if ((id > trace->syscalls.max || trace->syscalls.table[id].name == NULL))
@@ -1611,16 +1612,22 @@ static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 	size_t printed = 0;
 	struct thread *thread;
 	int id = perf_evsel__sc_tp_uint(evsel, id, sample);
-	struct syscall *sc = trace__syscall_info(trace, evsel, id);
+	struct syscall *sc;
 	struct thread_trace *ttrace;
+	int am;
 
+	thread = machine__findnew_thread(trace->host, sample->pid, sample->tid);
+	if (thread == NULL)
+		return -1;
+
+	am = audit_machine__from_thread(thread);
+	sc = trace__syscall_info(trace, evsel, id, am);
 	if (sc == NULL)
 		return -1;
 
 	if (sc->filtered)
 		return 0;
 
-	thread = machine__findnew_thread(trace->host, sample->pid, sample->tid);
 	ttrace = thread__trace(thread, trace->output);
 	if (ttrace == NULL)
 		return -1;
@@ -1659,17 +1666,23 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 	u64 duration = 0;
 	struct thread *thread;
 	int id = perf_evsel__sc_tp_uint(evsel, id, sample);
-	struct syscall *sc = trace__syscall_info(trace, evsel, id);
+	struct syscall *sc;
 	struct thread_trace *ttrace;
 	int open_id;
+	int am;
 
+	thread = machine__findnew_thread(trace->host, sample->pid, sample->tid);
+	if (thread == NULL)
+		return -1;
+
+	am = audit_machine__from_thread(thread);
+	sc = trace__syscall_info(trace, evsel, id, am);
 	if (sc == NULL)
 		return -1;
 
 	if (sc->filtered)
 		return 0;
 
-	thread = machine__findnew_thread(trace->host, sample->pid, sample->tid);
 	ttrace = thread__trace(thread, trace->output);
 	if (ttrace == NULL)
 		return -1;
@@ -1679,7 +1692,10 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 
 	ret = perf_evsel__sc_tp_uint(evsel, ret, sample);
 
-	open_id = trace->audit[trace->default_machine].open_id;
+	open_id = trace->audit[am].open_id;
+	if (open_id == 0)
+		open_id = trace->audit[am].open_id = audit_name_to_syscall("open", am);
+
 	if (id == open_id && ret >= 0 && trace->last_vfs_getname) {
 		trace__set_fd_pathname(thread, ret, trace->last_vfs_getname);
 		trace->last_vfs_getname = NULL;
