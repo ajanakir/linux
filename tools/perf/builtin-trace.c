@@ -1160,10 +1160,10 @@ fail:
 
 struct trace {
 	struct perf_tool	tool;
+	int default_machine;    /* default audit machine */
 	struct {
-		int		machine;
 		int		open_id;
-	}			audit;
+	}			audit[16];  /* 16 should come from libaudit.h */
 	struct {
 		int		max;
 		struct syscall  *table;
@@ -1419,7 +1419,7 @@ static int trace__read_syscall_info(struct trace *trace, int id)
 {
 	char tp_name[128];
 	struct syscall *sc;
-	const char *name = audit_syscall_to_name(id, trace->audit.machine);
+	const char *name = audit_syscall_to_name(id, trace->default_machine);
 
 	if (name == NULL)
 		return -1;
@@ -1661,6 +1661,7 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 	int id = perf_evsel__sc_tp_uint(evsel, id, sample);
 	struct syscall *sc = trace__syscall_info(trace, evsel, id);
 	struct thread_trace *ttrace;
+	int open_id;
 
 	if (sc == NULL)
 		return -1;
@@ -1678,7 +1679,8 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 
 	ret = perf_evsel__sc_tp_uint(evsel, ret, sample);
 
-	if (id == trace->audit.open_id && ret >= 0 && trace->last_vfs_getname) {
+	open_id = trace->audit[trace->default_machine].open_id;
+	if (id == open_id && ret >= 0 && trace->last_vfs_getname) {
 		trace__set_fd_pathname(thread, ret, trace->last_vfs_getname);
 		trace->last_vfs_getname = NULL;
 		++trace->stats.vfs_getname;
@@ -2297,10 +2299,7 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 		NULL
 	};
 	struct trace trace = {
-		.audit = {
-			.machine = audit_detect_machine(),
-			.open_id = audit_name_to_syscall("open", trace.audit.machine),
-		},
+		.default_machine = audit_detect_machine(),
 		.syscalls = {
 			. max = -1,
 		},
@@ -2355,13 +2354,17 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 		    "Show all syscalls and summary with statistics"),
 	OPT_END()
 	};
-	int err;
+	int err, am;
 	char bf[BUFSIZ];
 
 	if ((argc > 1) && (strcmp(argv[1], "record") == 0))
 		return trace__record(argc-2, &argv[2]);
 
 	argc = parse_options(argc, argv, trace_options, trace_usage, 0);
+
+	/* lookup id for open syscall for default machine */
+	am = trace.default_machine;
+	trace.audit[am].open_id = audit_name_to_syscall("open", am);
 
 	/* summary_only implies summary option, but don't overwrite summary if set */
 	if (trace.summary_only)
