@@ -34,6 +34,7 @@
 #include "util/sort.h"
 #include "util/hist.h"
 #include "util/data.h"
+#include "util/time-utils.h"
 #include "arch/common.h"
 
 #include <dlfcn.h>
@@ -54,6 +55,8 @@ struct perf_report {
 	const char		*pretty_printing_style;
 	const char		*cpu_list;
 	const char		*symbol_filter_str;
+	const char		*time_str;
+	struct			perf_time ptime;
 	float			min_percent;
 	DECLARE_BITMAP(cpu_bitmap, MAX_NR_CPUS);
 };
@@ -317,6 +320,9 @@ static int process_sample_event(struct perf_tool *tool,
 	struct perf_report *rep = container_of(tool, struct perf_report, tool);
 	struct addr_location al;
 	int ret;
+
+	if (perf_time__skip_sample(&rep->ptime, sample->time))
+		return 0;
 
 	if (perf_event__preprocess_sample(event, machine, &al, sample) < 0) {
 		fprintf(stderr, "problem processing %d event, skipping it.\n",
@@ -884,6 +890,8 @@ int cmd_report(int argc, const char **argv, const char *prefix __maybe_unused)
 	OPT_BOOLEAN(0, "mem-mode", &report.mem_mode, "mem access profile"),
 	OPT_CALLBACK(0, "percent-limit", &report, "percent",
 		     "Don't show entries under that percent", parse_percent_limit),
+	OPT_STRING(0, "time", &report.time_str, "str",
+		   "Time span of interest (start,stop)"),
 	OPT_END()
 	};
 	struct perf_data_file file = {
@@ -920,6 +928,15 @@ repeat:
 		return -ENOMEM;
 
 	report.session = session;
+
+	if (perf_time__have_reftime(session) != 0)
+		pr_debug("No reference time. Time stamps will be perf_clock\n");
+
+	/* needs to be parsed after looking up reference time */
+	if (perf_time__parse_str(&report.ptime, report.time_str, NULL) != 0) {
+		pr_err("Invalid time string\n");
+		return -EINVAL;
+	}
 
 	has_br_stack = perf_header__has_feat(&session->header,
 					     HEADER_BRANCH_STACK);
