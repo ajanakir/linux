@@ -18,6 +18,7 @@
 #include "util/stat.h"
 #include "util/top.h"
 #include "util/data.h"
+#include "util/time-utils.h"
 
 #include <sys/prctl.h>
 #ifdef HAVE_TIMERFD_SUPPORT
@@ -119,6 +120,7 @@ struct perf_kvm_stat {
 	int timerfd;
 	unsigned int display_time;
 	bool live;
+	bool have_perf_clock;
 };
 
 
@@ -917,9 +919,11 @@ static s64 perf_kvm__mmap_read_idx(struct perf_kvm_stat *kvm, int idx,
 		if (n == 0)
 			*mmap_time = sample.time;
 
-		/* limit events per mmap handled all at once */
+		/* limit events per mmap handled all at once if perf_clock
+		 * is not available as a flush time
+		 */
 		n++;
-		if (n == PERF_KVM__MAX_EVENTS_PER_MMAP)
+		if (!kvm->have_perf_clock && n == PERF_KVM__MAX_EVENTS_PER_MMAP)
 			break;
 	}
 
@@ -931,29 +935,40 @@ static int perf_kvm__mmap_read(struct perf_kvm_stat *kvm)
 	int i, err, throttled = 0;
 	s64 n, ntotal = 0;
 	u64 flush_time = ULLONG_MAX, mmap_time;
+	/* get perf_clock timestamp at start of this round */
+	u64 perf_clock = get_perf_clock();
 
 	for (i = 0; i < kvm->evlist->nr_mmaps; i++) {
 		n = perf_kvm__mmap_read_idx(kvm, i, &mmap_time);
 		if (n < 0)
 			return -1;
 
-		/* flush time is going to be the minimum of all the individual
-		 * mmap times. Essentially, we flush all the samples queued up
-		 * from the last pass under our minimal start time -- that leaves
-		 * a very small race for samples to come in with a lower timestamp.
-		 * The ioctl to return the perf_clock timestamp should close the
-		 * race entirely.
-		 */
-		if (mmap_time < flush_time)
-			flush_time = mmap_time;
-
 		ntotal += n;
-		if (n == PERF_KVM__MAX_EVENTS_PER_MMAP)
-			throttled = 1;
+
+		if (!kvm->have_perf_clock) {
+			/* flush time is going to be the minimum of all the individual
+			 * mmap times. Essentially, we flush all the samples queued up
+			 * from the last pass under our minimal start time -- that leaves
+			 * a very small race for samples to come in with a lower timestamp.
+			 */
+			if (mmap_time < flush_time)
+				flush_time = mmap_time;
+
+			if (n == PERF_KVM__MAX_EVENTS_PER_MMAP)
+				throttled = 1;
+		}
 	}
 
 	/* flush queue after each round in which we processed events */
 	if (ntotal) {
+		/*
+		 * if perf_clock is available use it to set flush_time. perf_clock
+		 * is synchronized across cores in a socket, but will be unsynchronized
+		 * across sockets. The 100 usecs is a heuristic to handle that
+		 */
+		if (kvm->have_perf_clock)
+			flush_time = perf_clock - 100*NSEC_PER_USEC;
+
 		kvm->session->ordered_samples.next_flush = flush_time;
 		err = kvm->tool.finished_round(&kvm->tool, NULL, kvm->session);
 		if (err) {
@@ -1125,6 +1140,10 @@ static int kvm_events_live_report(struct perf_kvm_stat *kvm)
 	nr_fds++;
 	if (fd_set_nonblock(fileno(stdin)) != 0)
 		goto out;
+
+	/* check if perf_clock is available as a flush time */
+	kvm->have_perf_clock = (get_perf_clock() != (u64) -1);
+	pr_debug("have_perf_clock is %sset\n", kvm->have_perf_clock ? "" : "NOT ");
 
 	/* everything is good - enable the events and process */
 	perf_evlist__enable(kvm->evlist);
