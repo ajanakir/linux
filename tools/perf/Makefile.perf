@@ -379,6 +379,9 @@ LIB_OBJS += $(OUTPUT)ui/stdio/hist.o
 
 LIB_OBJS += $(OUTPUT)arch/common.o
 
+ifdef NO_PERF_TESTS
+CFLAGS += -DNO_PERF_TESTS
+else
 LIB_OBJS += $(OUTPUT)tests/parse-events.o
 LIB_OBJS += $(OUTPUT)tests/dso-data.o
 LIB_OBJS += $(OUTPUT)tests/attr.o
@@ -404,6 +407,8 @@ endif
 LIB_OBJS += $(OUTPUT)tests/code-reading.o
 LIB_OBJS += $(OUTPUT)tests/sample-parsing.o
 LIB_OBJS += $(OUTPUT)tests/parse-no-sample-id-all.o
+LIB_OBJS += $(OUTPUT)tests/keep-tracking.o
+endif
 
 BUILTIN_OBJS += $(OUTPUT)builtin-annotate.o
 BUILTIN_OBJS += $(OUTPUT)builtin-bench.o
@@ -435,7 +440,9 @@ BUILTIN_OBJS += $(OUTPUT)builtin-kmem.o
 BUILTIN_OBJS += $(OUTPUT)builtin-lock.o
 BUILTIN_OBJS += $(OUTPUT)builtin-kvm.o
 BUILTIN_OBJS += $(OUTPUT)builtin-inject.o
+ifndef NO_PERF_TESTS
 BUILTIN_OBJS += $(OUTPUT)tests/builtin-test.o
+endif
 BUILTIN_OBJS += $(OUTPUT)builtin-mem.o
 
 PERFLIBS = $(LIB_FILE) $(LIBLK) $(LIBTRACEEVENT)
@@ -474,7 +481,6 @@ endif # NO_LIBELF
 ifndef NO_LIBUNWIND
   LIB_OBJS += $(OUTPUT)util/unwind.o
 endif
-LIB_OBJS += $(OUTPUT)tests/keep-tracking.o
 
 ifndef NO_LIBAUDIT
   BUILTIN_OBJS += $(OUTPUT)builtin-trace.o
