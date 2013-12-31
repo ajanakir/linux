@@ -2608,6 +2608,8 @@ out:
 	return err;
 }
 
+#include "schedmon.c"
+
 static void print_bad_events(struct perf_sched *sched)
 {
 	if (sched->nr_unordered_timestamps && sched->nr_timestamps) {
@@ -2953,6 +2955,8 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 		}
 
 		return perf_sched__timehist(&sched);
+	} else if (!strcmp(argv[0], "daemon")) {
+		return perf_sched__daemon(&sched, argc, argv);
 	} else {
 		usage_with_options(sched_usage, sched_options);
 	}
