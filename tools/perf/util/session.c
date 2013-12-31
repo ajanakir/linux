@@ -1487,9 +1487,10 @@ struct perf_evsel *perf_session__find_first_evtype(struct perf_session *session,
 	return NULL;
 }
 
-void perf_evsel__print_ip(struct perf_evsel *evsel, union perf_event *event,
-			  struct perf_sample *sample, struct machine *machine,
-			  unsigned int print_opts, unsigned int stack_depth)
+void perf_evsel__print_ip(FILE *fp, struct perf_evsel *evsel,
+			  union perf_event *event, struct perf_sample *sample,
+			  struct machine *machine, unsigned int print_opts,
+			  unsigned int stack_depth)
 {
 	struct addr_location al;
 	struct callchain_cursor_node *node;
@@ -1528,29 +1529,29 @@ void perf_evsel__print_ip(struct perf_evsel *evsel, union perf_event *event,
 				goto next;
 
 			if (print_ip)
-				printf("%c%16" PRIx64, s, node->ip);
+				fprintf(fp, "%c%16" PRIx64, s, node->ip);
 
 			if (node->map)
 				addr = node->map->map_ip(node->map, node->ip);
 
 			if (print_sym) {
-				printf(" ");
+				fprintf(fp, " ");
 				if (print_symoffset) {
 					al.addr = addr;
 					al.map  = node->map;
-					symbol__fprintf_symname_offs(node->sym, &al, stdout);
+					symbol__fprintf_symname_offs(node->sym, &al, fp);
 				} else
-					symbol__fprintf_symname(node->sym, stdout);
+					symbol__fprintf_symname(node->sym, fp);
 			}
 
 			if (print_dso) {
-				printf(" (");
-				map__fprintf_dsoname(node->map, stdout);
-				printf(")");
+				fprintf(fp, " (");
+				map__fprintf_dsoname(node->map, fp);
+				fprintf(fp, ")");
 			}
 
 			if (!print_oneline)
-				printf("\n");
+				fprintf(fp, "\n");
 
 			stack_depth--;
 next:
@@ -1562,21 +1563,20 @@ next:
 			return;
 
 		if (print_ip)
-			printf("%16" PRIx64, sample->ip);
+			fprintf(fp, "%16" PRIx64, sample->ip);
 
 		if (print_sym) {
-			printf(" ");
+			fprintf(fp, " ");
 			if (print_symoffset)
-				symbol__fprintf_symname_offs(al.sym, &al,
-							     stdout);
+				symbol__fprintf_symname_offs(al.sym, &al, fp);
 			else
-				symbol__fprintf_symname(al.sym, stdout);
+				symbol__fprintf_symname(al.sym, fp);
 		}
 
 		if (print_dso) {
-			printf(" (");
-			map__fprintf_dsoname(al.map, stdout);
-			printf(")");
+			fprintf(fp, " (");
+			map__fprintf_dsoname(al.map, fp);
+			fprintf(fp, ")");
 		}
 	}
 }
