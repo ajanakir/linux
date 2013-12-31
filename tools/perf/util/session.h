@@ -107,7 +107,8 @@ struct perf_evsel *perf_session__find_first_evtype(struct perf_session *session,
 
 void perf_evsel__print_ip(FILE *fp, struct perf_evsel *evsel, union perf_event *event,
 			  struct perf_sample *sample, struct machine *machine,
-			  unsigned int print_opts, unsigned int stack_depth);
+			  unsigned int print_opts, unsigned int stack_depth,
+			  unsigned int stack_kdepth, unsigned int stack_udepth);
 
 int perf_session__cpu_bitmap(struct perf_session *session,
 			     const char *cpu_list, unsigned long *cpu_bitmap);

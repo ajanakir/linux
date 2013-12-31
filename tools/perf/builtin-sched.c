@@ -1726,7 +1726,8 @@ static void timehist_print_sample(struct perf_sched *sched,
 
 	perf_evsel__print_ip(fp, evsel, event, sample, machine,
 			     PRINT_IP_OPT_SYM | PRINT_IP_OPT_ONELINE,
-			     sched->max_stack);
+				 sched->max_stack, PERF_MAX_STACK_DEPTH,
+				 PERF_MAX_STACK_DEPTH);
 
 out:
 	fprintf(fp, "\n");

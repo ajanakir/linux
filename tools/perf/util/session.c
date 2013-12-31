@@ -1496,7 +1496,8 @@ struct perf_evsel *perf_session__find_first_evtype(struct perf_session *session,
 void perf_evsel__print_ip(FILE *fp, struct perf_evsel *evsel,
 			  union perf_event *event, struct perf_sample *sample,
 			  struct machine *machine, unsigned int print_opts,
-			  unsigned int stack_depth)
+			  unsigned int total_stack, unsigned int stack_depth,
+			  unsigned int ustack_depth)
 {
 	struct addr_location al;
 	struct callchain_cursor_node *node;
@@ -1524,14 +1525,25 @@ void perf_evsel__print_ip(FILE *fp, struct perf_evsel *evsel,
 		}
 		callchain_cursor_commit(&callchain_cursor);
 
-		while (stack_depth) {
+		while (1) {
 			u64 addr = 0;
 
 			node = callchain_cursor_current(&callchain_cursor);
 			if (!node)
 				break;
 
+			/* handle switch to userspace by flipping stack depth counter */
+			if (node->map && node->map->dso->kernel == DSO_TYPE_USER) {
+				stack_depth = ustack_depth;
+				/* if ustack_depth is 0 no need to proceed further */
+				if (stack_depth == 0)
+					break;
+			}
+
 			if (node->sym && node->sym->ignore)
+				goto next;
+
+			if (stack_depth == 0)
 				goto next;
 
 			if (print_ip)
@@ -1560,6 +1572,9 @@ void perf_evsel__print_ip(FILE *fp, struct perf_evsel *evsel,
 				fprintf(fp, "\n");
 
 			stack_depth--;
+			total_stack--;
+			if (total_stack == 0)
+				break;
 next:
 			callchain_cursor_advance(&callchain_cursor);
 		}
