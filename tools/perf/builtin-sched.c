@@ -182,6 +182,7 @@ struct perf_sched {
 	unsigned int	max_stack;
 	bool		show_cpu_visual;
 	bool		show_wakeups;
+	bool		have_traces;
 	/* process and task id's of interest */
 	struct target	target;
 	struct intlist	*pid, *tid;
@@ -2089,6 +2090,15 @@ out:
 	return rc;
 }
 
+static int timehist_cs_event(struct perf_tool *tool __maybe_unused,
+			     union perf_event *event,
+			     struct perf_evsel *evsel,
+			     struct perf_sample *sample,
+			     struct machine *machine __maybe_unused)
+{
+	return timehist_sched_change_event(tool, event, evsel, sample, machine);
+}
+
 static int timehist_sched_switch_event(struct perf_tool *tool,
 			     union perf_event *event,
 			     struct perf_evsel *evsel,
@@ -2313,10 +2323,25 @@ static int parse_target_str(struct perf_sched *sched)
 static int timehist_check_attr(struct perf_sched *sched,
 			       struct perf_evlist *evlist)
 {
-	struct perf_evsel *evsel;
+	struct perf_evsel *evsel, *cs_evsel = NULL;
 	struct evsel_runtime *er;
+	const char *evname;
+	bool have_cs_event = false, have_sched_event = false;
 
 	list_for_each_entry(evsel, &evlist->entries, node) {
+		if (evsel->attr.type == PERF_TYPE_TRACEPOINT)
+			sched->have_traces = true;
+
+		evname = perf_evsel__name(evsel);
+		if (strcmp(evname, "cs") == 0 ||
+		    strcmp(evname, "context-switch") == 0) {
+			cs_evsel = evsel;
+			have_cs_event = true;
+		} else if (strcmp(evname, "sched:sched_switch") == 0) {
+			have_sched_event = true;
+		}
+
+
 		er = perf_evsel__get_runtime(evsel);
 		if (er == NULL) {
 			pr_err("Failed to allocate memory for evsel runtime data\n");
@@ -2329,6 +2354,13 @@ static int timehist_check_attr(struct perf_sched *sched,
 			sched->show_callchain = 0;
 			symbol_conf.use_callchain = 0;
 		}
+	}
+
+	if (have_cs_event && have_sched_event) {
+		pr_debug("Both schedule change events exist. Ignoring context-switch event\n");
+	} else if (have_cs_event) {
+		pr_debug("Using context-switch events.\n");
+		cs_evsel->handler = timehist_cs_event;
 	}
 
 	return 0;
@@ -2387,10 +2419,8 @@ static int perf_sched__timehist(struct perf_sched *sched)
 	setup_pager();
 
 	/* setup per-evsel handlers */
-	if (perf_session__set_tracepoints_handlers(session, handlers))
-		goto out;
-
-	if (!perf_session__has_traces(session, "record -R"))
+	if (sched->have_traces &&
+	    perf_session__set_tracepoints_handlers(session, handlers))
 		goto out;
 
 	/* pre-allocate struct for per-CPU idle stats */
