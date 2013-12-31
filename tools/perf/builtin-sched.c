@@ -182,6 +182,8 @@ struct perf_sched {
 	unsigned int	max_stack;
 	bool		show_cpu_visual;
 	bool		show_wakeups;
+	bool		pstree;
+	bool		pstree_only;
 	bool		have_traces;
 	/* process and task id's of interest */
 	struct target	target;
@@ -194,6 +196,11 @@ static struct strlist	*excl_sym_list;
 
 /* per thread run time data */
 struct thread_runtime {
+	struct list_head children;
+	struct list_head node;
+
+	struct thread *thread; /* link back to thread struct; for pstree */
+
 	u64 last_time;      /* time of previous sched in/out event */
 	u64 dt_run;         /* run time */
 	u64 dt_between;     /* time between CPU access (off cpu) */
@@ -1917,6 +1924,9 @@ static struct thread_runtime *thread__init_runtime(struct thread *thread)
 		return NULL;
 
 	init_stats(&r->run_stats);
+	INIT_LIST_HEAD(&r->children);
+	INIT_LIST_HEAD(&r->node);
+	r->thread = thread;
 	thread__set_priv(thread, r);
 
 	return r;
@@ -1956,6 +1966,114 @@ static struct thread *timehist_get_thread(struct perf_sample *sample,
 	}
 
 	return thread;
+}
+
+static void timehist_add_child(struct thread *t,
+			       struct thread *p)
+{
+	struct thread_runtime *rc, *rp;
+
+	if (p == NULL) {
+		pr_err("No parent entry for child %d ppid %d\n",
+		       t->tid, t->ppid);
+		return;
+	}
+
+	rc = thread__get_runtime(t);
+	rp = thread__get_runtime(p);
+
+	if (rc == NULL || rp == NULL)
+		return;
+
+	if (list_empty(&rc->node)) {
+		list_add_tail(&rc->node, &rp->children);
+	} else {
+		pr_err("thread %s already on a list\n",
+		       timehist_get_commstr(rc->thread));
+	}
+}
+
+/* mark terminated threads in pstree output */
+#define TIMEHIST_TERMINATED     " *"
+
+static bool pstree_print_children(FILE *fp, struct thread_runtime *r, int depth)
+{
+	struct thread_runtime *next;
+	bool printed_nl = false;
+
+	depth++;
+
+	if (list_empty(&r->children))
+		return false;
+
+	list_for_each_entry(next, &r->children, node) {
+		if (next->total_run_time == 0)
+			continue;
+
+		printf_nsecs(fp, next->total_run_time, 9);
+		fprintf(fp, "msec  ");
+		fprintf(fp, "%*s", 8*depth, " ");
+		fprintf(fp, "%s", timehist_get_commstr(next->thread));
+		fprintf(fp, "%s\n", next->thread->dead ? TIMEHIST_TERMINATED : "");
+		printed_nl = pstree_print_children(fp, next, depth);
+	}
+
+	if (!printed_nl)
+		fprintf(fp, "\n");
+
+	return true;
+}
+
+static int pstree_print_thread(struct thread *t, void *priv)
+{
+	FILE *fp = (FILE *) priv;
+	struct thread_runtime *r;
+
+	r = thread__priv(t);
+	if (r) {
+		/*
+		 * only print trees from top parent; skip processes with
+		 * 0 runtime if a time window was given
+		 */
+		if ((t->ppid == -1) && r->total_run_time) {
+			printf_nsecs(fp, r->total_run_time, 9);
+			fprintf(fp, "msec  ");
+			fprintf(fp, "%s", timehist_get_commstr(t));
+			fprintf(fp, "%s\n", t->dead ? TIMEHIST_TERMINATED : "");
+			if (list_empty(&r->children))
+				fprintf(fp, "\n");
+			else
+				pstree_print_children(fp, r, 0);
+		}
+	}
+
+	return 0;
+}
+
+static int timehist_link_child(struct thread *t, void *priv)
+{
+	struct thread *p;
+	struct machine *m = (struct machine *) priv;
+
+	if (t->ppid > 0) {
+		p = machine__find_thread(m, t->ppid);
+		timehist_add_child(t, p);
+	}
+
+	return 0;
+}
+
+static void timehist_pstree(FILE *fp, struct perf_session *session)
+{
+	struct machine *m = &session->machines.host;
+
+	/* first, link children to parent */
+	machine__for_each_thread(m, timehist_link_child, m);
+
+	fprintf(fp, "\n\nParent-child relationships (* = terminated)\n");
+	fprintf(fp, "-------------------------------------------\n");
+
+	machine__for_each_thread(m, pstree_print_thread, fp);
 }
 
 static bool timehist_skip_sample(struct perf_sched *sched,
@@ -2073,7 +2191,7 @@ static int timehist_sched_change_event(struct perf_tool *tool,
 	tprev = perf_evsel__get_time(evsel, sample->cpu);
 
 	timehist_update_runtime_stats(tr, sample->time, tprev);
-	if (!sched->summary_only)
+	if (!sched->summary_only && !sched->pstree_only)
 		timehist_print_sample(sched, event, evsel, sample, thread, machine);
 
 out:
@@ -2432,7 +2550,10 @@ static int perf_sched__timehist(struct perf_sched *sched)
 	if (sched->summary_only)
 		sched->summary = sched->summary_only;
 
-	if (!sched->summary_only)
+	if (sched->pstree_only)
+		sched->pstree = sched->pstree_only;
+
+	if (!sched->summary_only && !sched->pstree_only)
 		timehist_header(sched);
 
 	err = perf_session__process_events(session, &sched->tool);
@@ -2447,6 +2568,9 @@ static int perf_sched__timehist(struct perf_sched *sched)
 
 	if (sched->summary)
 		timehist_print_summary(sched->fp, session);
+
+	if (sched->pstree)
+		timehist_pstree(sched->fp, session);
 
 out:
 	free_idle_threads();
@@ -2708,6 +2832,8 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 		    "Show all syscalls and summary with statistics"),
 	OPT_BOOLEAN('w', "wakeups", &sched.show_wakeups, "Show wakeup events"),
 	OPT_BOOLEAN('V', "cpu-visual", &sched.show_cpu_visual, "Add CPU visual"),
+	OPT_BOOLEAN('T', "pstree", &sched.pstree_only, "Show only parent-child tree"),
+	OPT_BOOLEAN('P', "with-pstree", &sched.pstree, "Show parent-child tree"),
 	OPT_END()
 	};
 	const char * const timehist_usage[] = {
