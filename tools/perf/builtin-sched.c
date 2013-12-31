@@ -19,6 +19,7 @@
 
 #include "util/strlist.h"
 #include "util/intlist.h"
+#include "util/time-utils.h"
 #include "asm/bug.h"
 #include <sys/prctl.h>
 #include <sys/resource.h>
@@ -1673,20 +1674,6 @@ static void timehist_header(struct perf_sched *sched)
 	fprintf(fp, "\n");
 }
 
-static char *timehist_time_str(char *tstr, int len, u64 t)
-{
-	unsigned long secs, usecs;
-	unsigned long long nsecs;
-
-	nsecs = t;
-	secs = nsecs / NSEC_PER_SEC;
-	nsecs -= secs * NSEC_PER_SEC;
-	usecs = nsecs / NSEC_PER_USEC;
-	snprintf(tstr, len, "%5lu.%06lu", secs, usecs);
-
-	return tstr;
-}
-
 static void timehist_print_sample(struct perf_sched *sched,
 				  union perf_event *event,
 				  struct perf_evsel *evsel,
@@ -1699,7 +1686,7 @@ static void timehist_print_sample(struct perf_sched *sched,
 	u32 max_cpus = sched->max_cpu;
 	FILE *fp = sched->fp;
 
-	fprintf(fp, "%15s ", timehist_time_str(tstr, sizeof(tstr), sample->time));
+	fprintf(fp, "%15s ", perf_time__str(tstr, sizeof(tstr), sample->time, NULL));
 
 	fprintf(fp, "[%02d] ", sample->cpu);
 
@@ -2114,7 +2101,7 @@ static void timehist_print_wakeup_event(struct perf_sched *sched,
 		return;
 	}
 
-	fprintf(fp, "%15s ", timehist_time_str(tstr, sizeof(tstr), sample->time));
+	fprintf(fp, "%15s ", perf_time__str(tstr, sizeof(tstr), sample->time, NULL));
 	fprintf(fp, "[%02d] ", sample->cpu);
 	if (sched->show_cpu_visual && sched->max_cpu)
 		fprintf(fp, " %*s ", sched->max_cpu, "");
@@ -2235,7 +2222,7 @@ static int process_lost(struct perf_tool *tool __maybe_unused,
 	FILE *fp = sched->fp;
 	char tstr[64];
 
-	fprintf(fp, "%15s ", timehist_time_str(tstr, sizeof(tstr), sample->time));
+	fprintf(fp, "%15s ", perf_time__str(tstr, sizeof(tstr), sample->time, NULL));
 	fprintf(fp, "lost %" PRIu64 " events on cpu %d\n", event->lost.lost, sample->cpu);
 
 	return 0;
@@ -2525,6 +2512,9 @@ static int perf_sched__timehist(struct perf_sched *sched)
 	session = perf_session__new(&file, false, &sched->tool);
 	if (session == NULL)
 		return -ENOMEM;
+
+	if (perf_time__have_reftime(session) != 0)
+		pr_debug("No reference time. Time stamps will be perf_clock\n");
 
 	machines__set_symbol_filter(&session->machines, timehist_symbol_filter);
 
