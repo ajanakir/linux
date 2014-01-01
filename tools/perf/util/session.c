@@ -15,6 +15,7 @@
 #include "cpumap.h"
 #include "perf_regs.h"
 #include "vdso.h"
+#include "time-utils.h"
 
 static int perf_session__open(struct perf_session *session)
 {
@@ -1669,4 +1670,16 @@ int __perf_session__set_tracepoints_handlers(struct perf_session *session,
 	err = 0;
 out:
 	return err;
+}
+
+int perf_session__get_reftime(struct perf_session *session)
+{
+	struct perf_header *ph = &session->header;
+	int rc;
+
+	rc = perf_time__get_reftime(&ph->env.perf_clock_ref, &ph->env.tod_tv_ref);
+	if (rc == 0)
+		perf_header__set_feat(ph, HEADER_REFERENCE_TIME);
+
+	return rc;
 }
