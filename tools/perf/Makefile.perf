@@ -370,6 +370,9 @@ LIB_OBJS += $(OUTPUT)util/record.o
 LIB_OBJS += $(OUTPUT)util/srcline.o
 LIB_OBJS += $(OUTPUT)util/data.o
 LIB_OBJS += $(OUTPUT)util/time-utils.o
+ifeq ($(ARCH),x86)
+LIB_OBJS += $(OUTPUT)util/kvm.o
+endif
 
 LIB_OBJS += $(OUTPUT)ui/setup.o
 LIB_OBJS += $(OUTPUT)ui/helpline.o

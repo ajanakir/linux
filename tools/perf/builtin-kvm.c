@@ -19,6 +19,7 @@
 #include "util/top.h"
 #include "util/data.h"
 #include "util/time-utils.h"
+#include "util/kvm.h"
 
 #include <sys/prctl.h>
 #ifdef HAVE_TIMERFD_SUPPORT
@@ -31,10 +32,6 @@
 #include <math.h>
 
 #if defined(__i386__) || defined(__x86_64__)
-#include <asm/svm.h>
-#include <asm/vmx.h>
-#include <asm/kvm.h>
-
 struct event_key {
 	#define INVALID_KEY     (~0ULL)
 	u64 key;
@@ -80,11 +77,6 @@ struct kvm_events_ops {
 	const char *name;
 };
 
-struct exit_reasons_table {
-	unsigned long exit_code;
-	const char *reason;
-};
-
 #define EVENTS_BITS		12
 #define EVENTS_CACHE_SIZE	(1UL << EVENTS_BITS)
 
@@ -98,10 +90,6 @@ struct perf_kvm_stat {
 	const char *report_event;
 	const char *sort_key;
 	int trace_vcpu;
-
-	struct exit_reasons_table *exit_reasons;
-	int exit_reasons_size;
-	const char *exit_reasons_isa;
 
 	struct kvm_events_ops *events_ops;
 	key_cmp_fun compare;
@@ -160,35 +148,11 @@ static bool exit_event_end(struct perf_evsel *evsel,
 	return kvm_entry_event(evsel);
 }
 
-static struct exit_reasons_table vmx_exit_reasons[] = {
-	VMX_EXIT_REASONS
-};
-
-static struct exit_reasons_table svm_exit_reasons[] = {
-	SVM_EXIT_REASONS
-};
-
-static const char *get_exit_reason(struct perf_kvm_stat *kvm, u64 exit_code)
-{
-	int i = kvm->exit_reasons_size;
-	struct exit_reasons_table *tbl = kvm->exit_reasons;
-
-	while (i--) {
-		if (tbl->exit_code == exit_code)
-			return tbl->reason;
-		tbl++;
-	}
-
-	pr_err("unknown kvm exit code:%lld on %s\n",
-		(unsigned long long)exit_code, kvm->exit_reasons_isa);
-	return "UNKNOWN";
-}
-
-static void exit_event_decode_key(struct perf_kvm_stat *kvm,
+static void exit_event_decode_key(struct perf_kvm_stat *kvm __maybe_unused,
 				  struct event_key *key,
 				  char decode[20])
 {
-	const char *exit_reason = get_exit_reason(kvm, key->key);
+	const char *exit_reason = kvm__get_exit_reason(key->key);
 
 	scnprintf(decode, 20, "%s", exit_reason);
 }
@@ -837,39 +801,6 @@ static int process_sample_event(struct perf_tool *tool,
 	return 0;
 }
 
-static int cpu_isa_config(struct perf_kvm_stat *kvm)
-{
-	char buf[64], *cpuid;
-	int err, isa;
-
-	if (kvm->live) {
-		err = get_cpuid(buf, sizeof(buf));
-		if (err != 0) {
-			pr_err("Failed to look up CPU type (Intel or AMD)\n");
-			return err;
-		}
-		cpuid = buf;
-	} else
-		cpuid = kvm->session->header.env.cpuid;
-
-	if (strstr(cpuid, "Intel"))
-		isa = 1;
-	else if (strstr(cpuid, "AMD"))
-		isa = 0;
-	else {
-		pr_err("CPU %s is not supported.\n", cpuid);
-		return -ENOTSUP;
-	}
-
-	if (isa == 1) {
-		kvm->exit_reasons = vmx_exit_reasons;
-		kvm->exit_reasons_size = ARRAY_SIZE(vmx_exit_reasons);
-		kvm->exit_reasons_isa = "VMX";
-	}
-
-	return 0;
-}
-
 static bool verify_vcpu(int vcpu)
 {
 	if (vcpu != -1 && vcpu < 0) {
@@ -1093,7 +1024,7 @@ static int kvm_events_live_report(struct perf_kvm_stat *kvm)
 	/* live flag must be set first */
 	kvm->live = true;
 
-	ret = cpu_isa_config(kvm);
+	ret = kvm__init(NULL);
 	if (ret < 0)
 		return ret;
 
@@ -1269,7 +1200,7 @@ static int read_events(struct perf_kvm_stat *kvm)
 	 * Do not use 'isa' recorded in kvm_exit tracepoint since it is not
 	 * traced in the old kernel.
 	 */
-	ret = cpu_isa_config(kvm);
+	ret = kvm__init(kvm->session->header.env.cpuid);
 	if (ret < 0)
 		return ret;
 
@@ -1606,10 +1537,6 @@ static int kvm_cmd_stat(const char *file_name, int argc, const char **argv)
 		.trace_vcpu	= -1,
 		.report_event	= "vmexit",
 		.sort_key	= "sample",
-
-		.exit_reasons = svm_exit_reasons,
-		.exit_reasons_size = ARRAY_SIZE(svm_exit_reasons),
-		.exit_reasons_isa = "SVM",
 	};
 
 	if (argc == 1) {
