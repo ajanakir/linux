@@ -17,6 +17,7 @@
 #include "util/sort.h"
 #include "util/data.h"
 #include "util/time-utils.h"
+#include "util/intlist.h"
 #include <linux/bitmap.h>
 
 static char const		*script_name;
@@ -38,6 +39,9 @@ struct perf_script {
 	struct perf_session	*session;
 	bool			show_task_events;
 	bool			show_mmap_events;
+	/* process and task id's of interest */
+	struct target		target;
+	struct intlist		*pid, *tid;
 	const char		*time_str;
 	struct			perf_time ptime;
 };
@@ -587,6 +591,24 @@ static int cleanup_scripting(void)
 	return scripting_ops->stop_script();
 }
 
+static bool script_skip_sample(struct perf_script *script,
+			       struct thread *thread, u64 t)
+{
+	if (thread__is_filtered(thread))
+		return true;
+
+	if (script->pid && intlist__find(script->pid, thread->pid_) == NULL)
+		return true;
+
+	if (script->tid && intlist__find(script->tid, thread->tid) == NULL)
+		return true;
+
+	if (perf_time__skip_sample(&script->ptime, t))
+		return true;
+
+	return false;
+}
+
 static int process_sample_event(struct perf_tool *tool,
 				union perf_event *event,
 				struct perf_sample *sample,
@@ -598,14 +620,14 @@ static int process_sample_event(struct perf_tool *tool,
 	struct thread *thread = machine__findnew_thread(machine, sample->pid,
 							sample->tid);
 
-	if (perf_time__skip_sample(&script->ptime, sample->time))
-		return 0;
-
 	if (thread == NULL) {
 		pr_debug("problem processing %d event, skipping it.\n",
 			 event->header.type);
 		return -1;
 	}
+
+	if (script_skip_sample(script, thread, sample->time))
+		return 0;
 
 	if (debug_mode) {
 		if (sample->time < last_timestamp) {
@@ -1097,6 +1119,28 @@ static int parse_output_fields(const struct option *opt __maybe_unused,
 out:
 	free(str);
 	return rc;
+}
+
+static int parse_target_str(struct perf_script *script)
+{
+	if (script->target.pid) {
+		script->pid = intlist__new(script->target.pid);
+		if (script->pid == NULL) {
+			pr_err("Error parsing process id string\n");
+			return -EINVAL;
+		}
+	}
+
+	if (script->target.tid) {
+		script->tid = intlist__new(script->target.tid);
+		if (script->tid == NULL) {
+			intlist__delete(script->pid);
+			pr_err("Error parsing thread id string\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
 }
 
 static int parse_tod_format(const struct option *opt __maybe_unused,
@@ -1645,6 +1689,10 @@ int cmd_script(int argc, const char **argv, const char *prefix __maybe_unused)
 	OPT_STRING('C', "cpu", &cpu_list, "cpu", "list of cpus to profile"),
 	OPT_STRING('c', "comms", &symbol_conf.comm_list_str, "comm[,comm...]",
 		   "only display events for these comms"),
+	OPT_STRING('p', "pid", &script.target.pid, "pid",
+		   "analyze events only for given process id(s)"),
+	OPT_STRING('t', "tid", &script.target.tid, "tid",
+		   "analyze events only for given thread id(s)"),
 	OPT_BOOLEAN('I', "show-info", &show_full_info,
 		    "display extended information from perf.data file"),
 	OPT_BOOLEAN('\0', "show-kernel-path", &symbol_conf.show_kernel_path,
@@ -1916,6 +1964,9 @@ int cmd_script(int argc, const char **argv, const char *prefix __maybe_unused)
 		pr_err("Invalid time string\n");
 		return -EINVAL;
 	}
+
+	if (parse_target_str(&script) != 0)
+		goto out;
 
 	err = __cmd_script(&script);
 
