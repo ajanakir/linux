@@ -40,6 +40,18 @@ const char *kvm__get_exit_reason(u64 exit_code)
 	return "UNKNOWN";
 }
 
+bool kvm__is_hlt_exit(u64 exit_code)
+{
+	bool rc;
+
+	if (exit_reasons == vmx_exit_reasons)
+		rc = exit_code == EXIT_REASON_HLT;
+	else
+		rc = exit_code == SVM_EXIT_HLT;
+
+	return rc;
+}
+
 int kvm__init(const char *cpuid)
 {
 	char buf[64];

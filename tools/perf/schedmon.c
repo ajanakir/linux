@@ -504,6 +504,18 @@ out:
 	return rc;
 }
 
+static int add_kvm_events(struct perf_evlist *evlist)
+{
+	if (perf_evlist__add_newtp(evlist, "kvm", "kvm_entry", timehist_kvm_entry_event) ||
+	    perf_evlist__add_newtp(evlist, "kvm", "kvm_exit", timehist_kvm_exit_event)) {
+		pr_err("Failed to add kvm tracepoints to the event list\n");
+		perf_evlist__delete(evlist);
+		return -1;
+	}
+
+	return 0;
+}
+
 static struct perf_evlist *create_evlist(void)
 {
 	struct perf_evlist *evlist;
@@ -614,6 +626,7 @@ static int perf_sched__daemon(struct perf_sched *sched,
 	struct perf_tool *tool = &sched->tool;
 	struct machine *machine;
 	unsigned int time_opt = MAX_TIME, max_events_opt = MAX_EVENTS;
+	bool with_kvm = false;
 
 	struct perf_record_opts opts = {
 		.user_interval = 1,
@@ -656,6 +669,7 @@ static int perf_sched__daemon(struct perf_sched *sched,
 			   "prefix for output filenames (default: stdout); time appended"),
 		OPT_BOOLEAN('C', "gz", &do_compression,
 			   "write compressed files using gzip"),
+		OPT_BOOLEAN(0, "kvm", &with_kvm, "Include kvm events"),
 		OPT_INCR('v', "verbose", &verbose, "be verbose"),
 		OPT_END()
 	};
@@ -680,6 +694,9 @@ static int perf_sched__daemon(struct perf_sched *sched,
 	tool->ordering_requires_timestamps = true,
 	perf_tool__fill_defaults(tool);
 
+	err = kvm__init(NULL);
+	if (err < 0)
+		return err;
 
 	evlist = create_evlist();
 	if (evlist == NULL)
@@ -690,6 +707,9 @@ static int perf_sched__daemon(struct perf_sched *sched,
 		if (argc)
 			usage_with_options(my_usage, options);
 	}
+
+	if (with_kvm && add_kvm_events(evlist) < 0)
+		return -1;
 
 	time_to_keep = (u64) time_opt * NSEC_PER_SEC;
 	max_events = (u64) max_events_opt;

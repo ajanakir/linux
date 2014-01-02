@@ -20,6 +20,7 @@
 #include "util/strlist.h"
 #include "util/intlist.h"
 #include "util/time-utils.h"
+#include "util/kvm.h"
 #include "asm/bug.h"
 #include <sys/prctl.h>
 #include <sys/resource.h>
@@ -27,6 +28,7 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <math.h>
+#include <asm/vmx.h>
 
 #define PR_SET_NAME		15               /* Set process name */
 #define MAX_CPUS		4096
@@ -209,6 +211,10 @@ struct thread_runtime {
 	u64 dt_between;     /* time between CPU access (off cpu) */
 	u64 dt_delay;       /* time between wakeup and sched-in */
 	u64 ready_to_run;   /* time of wakeup */
+
+	bool in_guest;      /* true when task is in guest mode */
+	bool exit_hlt;      /* exit reason is a cpu hlt */
+	u64 last_time_kvm;  /* track kvm_entry/exit times */
 
 	struct stats run_stats;
 	u64 total_run_time;
@@ -1682,7 +1688,7 @@ static void timehist_print_sample(struct perf_sched *sched,
 				  struct perf_sample *sample,
 				  struct thread *thread,
 				  struct machine *machine,
-				  u64 t)
+				  u64 t, bool start_only)
 {
 	struct thread_runtime *tr = thread__priv(thread);
 	char tstr[64];
@@ -1711,6 +1717,9 @@ static void timehist_print_sample(struct perf_sched *sched,
 
 	fprintf(fp, " %-*s ", comm_width, timehist_get_commstr(thread));
 
+	if (start_only)
+		return;
+
 	printf_nsecs(fp, tr->dt_between, 6);
 	printf_nsecs(fp, tr->dt_delay, 6);
 	printf_nsecs(fp, tr->dt_run, 6);
@@ -1721,14 +1730,14 @@ static void timehist_print_sample(struct perf_sched *sched,
 	if (thread->tid == 0)
 		goto out;
 
-	if (sched->show_callchain)
+	if (sched->show_callchain) {
 		fprintf(fp, "  ");
 
-	perf_evsel__print_ip(fp, evsel, event, sample, machine,
-			     PRINT_IP_OPT_SYM | PRINT_IP_OPT_ONELINE,
-				 sched->max_stack, PERF_MAX_STACK_DEPTH,
-				 PERF_MAX_STACK_DEPTH);
-
+		perf_evsel__print_ip(fp, evsel, event, sample, machine,
+				     PRINT_IP_OPT_SYM | PRINT_IP_OPT_ONELINE,
+				     sched->max_stack, PERF_MAX_STACK_DEPTH,
+				     PERF_MAX_STACK_DEPTH);
+	}
 out:
 	fprintf(fp, "\n");
 }
@@ -2212,8 +2221,10 @@ static int timehist_sched_change_event(struct perf_tool *tool,
 	}
 
 	timehist_update_runtime_stats(tr, t, tprev);
-	if (!sched->summary_only && !sched->pstree_only)
-		timehist_print_sample(sched, event, evsel, sample, thread, machine, t);
+	if (!sched->summary_only && !sched->pstree_only) {
+		timehist_print_sample(sched, event, evsel, sample, thread,
+				      machine, t, false);
+	}
 
 out:
 	if (tr) {
@@ -2245,6 +2256,89 @@ static int timehist_sched_switch_event(struct perf_tool *tool,
 			     struct machine *machine __maybe_unused)
 {
 	return timehist_sched_change_event(tool, event, evsel, sample, machine);
+}
+
+static int timehist_kvm_event(struct perf_tool *tool,
+			      union perf_event *event,
+			      struct perf_evsel *evsel,
+			      struct perf_sample *sample,
+			      struct machine *machine,
+			      bool entry_event)
+{
+	struct perf_sched *sched = container_of(tool, struct perf_sched, tool);
+	struct thread *thread;
+	struct thread_runtime *tr = NULL;
+	FILE *fp = sched->fp;
+	u64 dt = 0;
+
+	thread = timehist_get_thread(sample, machine, evsel);
+	if (thread == NULL)
+		return 0;
+
+	tr = thread__get_runtime(thread);
+	if (tr == NULL)
+		return -1;
+
+	if (entry_event && tr->in_guest && tr->last_time_kvm) {
+		pr_debug("double kvm_entry without an exit event\n");
+		tr->last_time_kvm = sample->time;
+	} else if (!entry_event && !tr->in_guest && tr->last_time_kvm) {
+		pr_debug("double kvm_exit without an entry event\n");
+		tr->last_time_kvm = sample->time;
+	}
+
+	if (!timehist_skip_sample(sched, thread) &&
+	    !perf_time__skip_sample(&sched->ptime, sample->time)) {
+		timehist_print_sample(sched, event, evsel, sample, thread,
+				      machine, sample->time, true);
+
+		fprintf(fp, "%33s", "");
+
+		if (tr->last_time_kvm)
+			dt = sample->time - tr->last_time_kvm;
+
+		fprintf(fp, "   ");
+		if (entry_event) {
+			tr->in_guest = true;
+
+			if (tr->exit_hlt)
+				fprintf(fp, "entry");
+			else
+				fprintf(fp, "entry: %3" PRIu64 " usec out of guest mode", dt/1000);
+		} else {
+			u64 reason = perf_evsel__intval(evsel, sample, "exit_reason");
+
+			fprintf(fp, " exit: %3" PRIu64 " usec in guest mode", dt/1000);
+			fprintf(fp, ", exit: %s", kvm__get_exit_reason(reason));
+
+			tr->exit_hlt = kvm__is_hlt_exit(reason);
+			tr->in_guest = false;
+		}
+
+		fprintf(fp, "\n");
+	}
+
+	tr->last_time_kvm = sample->time;
+
+	return 0;
+}
+
+static int timehist_kvm_entry_event(struct perf_tool *tool,
+				    union perf_event *event,
+				    struct perf_evsel *evsel,
+				    struct perf_sample *sample,
+				    struct machine *machine)
+{
+	return timehist_kvm_event(tool, event, evsel, sample, machine, true);
+}
+
+static int timehist_kvm_exit_event(struct perf_tool *tool,
+				   union perf_event *event,
+				   struct perf_evsel *evsel,
+				   struct perf_sample *sample,
+				   struct machine *machine)
+{
+	return timehist_kvm_event(tool, event, evsel, sample, machine, false);
 }
 
 static int process_lost(struct perf_tool *tool __maybe_unused,
@@ -2511,6 +2605,8 @@ static int perf_sched__timehist(struct perf_sched *sched)
 		{ "sched:sched_switch",       timehist_sched_switch_event, },
 		{ "sched:sched_wakeup",	      timehist_sched_wakeup_event, },
 		{ "sched:sched_wakeup_new",   timehist_sched_wakeup_event, },
+		{ "kvm:kvm_entry",            timehist_kvm_entry_event, },
+		{ "kvm:kvm_exit",             timehist_kvm_exit_event, },
 	};
 	struct perf_data_file file = {
 		.path = input_name,
@@ -2549,6 +2645,9 @@ static int perf_sched__timehist(struct perf_sched *sched)
 
 	if (perf_time__have_reftime(session) != 0)
 		pr_debug("No reference time. Time stamps will be perf_clock\n");
+
+	if (kvm__init(session->header.env.cpuid) < 0)
+		goto out;
 
 	/* needs to be parsed after looking up reference time */
 	if (perf_time__parse_str(&sched->ptime, sched->time_str, NULL) != 0) {
