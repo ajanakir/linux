@@ -96,6 +96,12 @@ TIMEHIST OPTIONS
 --max-stack::
     Set the stack depth limit when showing the callchains. Default: 5
 
+--ustacks::
+    Only show userspace functions in call chains.
+
+--kstacks::
+    Only show kernel functions in call chains.
+
 -x::
 --exclude-sym::
     Symbols to skip in backtrace. Useful to compact repetitive or

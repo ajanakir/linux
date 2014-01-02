@@ -2507,8 +2507,19 @@ static int setup_excl_sym(void)
 	return 0;
 }
 
+static bool ignore_kernel_stack, ignore_user_stack;
+
 static int timehist_symbol_filter(struct map *map, struct symbol *sym)
 {
+	if (ignore_kernel_stack && map->dso->kernel != DSO_TYPE_USER) {
+		sym->ignore = true;
+		return 0;
+	}
+	if (ignore_user_stack && map->dso->kernel == DSO_TYPE_USER) {
+		sym->ignore = true;
+		return 0;
+	}
+
 	/* filter out schedule and syscall related symbols from stack trace */
 	if (map->dso->kernel == DSO_TYPE_KERNEL) {
 		if ((strncmp(sym->name, "schedule", 8) == 0) ||
@@ -2934,6 +2945,8 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 		    "dump raw trace in ASCII"),
 	OPT_END()
 	};
+	bool user_stack_only = false;
+	bool kernel_stack_only = false;
 	const struct option timehist_options[] = {
 	OPT_STRING('i', "input", &input_name, "file",
 		    "input file name"),
@@ -2951,6 +2964,8 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 		    "analyze events only for given thread id(s)"),
 	OPT_BOOLEAN('g', "call-graph", &sched.show_callchain,
 		    "Display call chains if present (default on)"),
+	OPT_BOOLEAN(0, "ustacks", &user_stack_only, "Only show userspace stacks"),
+	OPT_BOOLEAN(0, "kstacks", &kernel_stack_only, "Only show kernel stacks"),
 	OPT_UINTEGER(0, "max-stack", &sched.max_stack,
 		   "Maximum number of functions to display backtrace."),
 	OPT_STRING('x', "exclude-sym", &excl_sym_list_str, "sym[,sym...]",
@@ -3053,6 +3068,12 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 			pr_err("-w and -s are mutually exclusive.\n");
 			return -EINVAL;
 		}
+		if (user_stack_only && kernel_stack_only) {
+			pr_err("--ustack and --kstack are mutually exclusive\n");
+			return -EINVAL;
+		}
+		ignore_kernel_stack = user_stack_only;
+		ignore_user_stack   = kernel_stack_only;
 
 		return perf_sched__timehist(&sched);
 	} else if (!strcmp(argv[0], "daemon")) {

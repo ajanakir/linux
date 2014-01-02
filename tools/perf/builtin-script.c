@@ -1187,6 +1187,19 @@ out:
 	return 0;
 }
 
+static bool ignore_kernel_stack, ignore_user_stack;
+
+static int script_symbol_filter(struct map *map, struct symbol *sym)
+{
+	if (ignore_kernel_stack && map->dso->kernel != DSO_TYPE_USER)
+		sym->ignore = true;
+
+	else if (ignore_user_stack && map->dso->kernel == DSO_TYPE_USER)
+		sym->ignore = true;
+
+	return 0;
+}
+
 /* Helper function for filesystems that return a dent->d_type DT_UNKNOWN */
 static int is_directory(const char *base_path, const struct dirent *dent)
 {
@@ -1652,6 +1665,8 @@ int cmd_script(int argc, const char **argv, const char *prefix __maybe_unused)
 			.ordering_requires_timestamps = true,
 		},
 	};
+	bool user_stack_only = false;
+	bool kernel_stack_only = false;
 	const struct option options[] = {
 	OPT_BOOLEAN('D', "dump-raw-trace", &dump_trace,
 		    "dump raw trace in ASCII"),
@@ -1675,6 +1690,8 @@ int cmd_script(int argc, const char **argv, const char *prefix __maybe_unused)
 		   "file", "kallsyms pathname"),
 	OPT_BOOLEAN('G', "hide-call-graph", &no_callchain,
 		    "When printing symbols do not display call chain"),
+	OPT_BOOLEAN(0, "ustacks", &user_stack_only, "Only show userspace stacks"),
+	OPT_BOOLEAN(0, "kstacks", &kernel_stack_only, "Only show kernel stacks"),
 	OPT_STRING(0, "symfs", &symbol_conf.symfs, "directory",
 		    "Look for files with symbols relative to this directory"),
 	OPT_CALLBACK('f', "fields", NULL, "str",
@@ -1724,6 +1741,13 @@ int cmd_script(int argc, const char **argv, const char *prefix __maybe_unused)
 
 	argc = parse_options(argc, argv, options, script_usage,
 			     PARSE_OPT_STOP_AT_NON_OPTION);
+
+	if (user_stack_only && kernel_stack_only) {
+		pr_err("--ustack and --kstack are mutually exclusive\n");
+		return -EINVAL;
+	}
+	ignore_kernel_stack = user_stack_only;
+	ignore_user_stack   = kernel_stack_only;
 
 	file.path = input_name;
 
@@ -1893,6 +1917,8 @@ int cmd_script(int argc, const char **argv, const char *prefix __maybe_unused)
 	session = perf_session__new(&file, false, &script.tool);
 	if (session == NULL)
 		return -ENOMEM;
+
+	machines__set_symbol_filter(&session->machines, script_symbol_filter);
 
 	script.session = session;
 
