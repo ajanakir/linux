@@ -17,6 +17,7 @@
 #include "util/symbol.h"
 #include "util/callchain.h"
 #include "util/strlist.h"
+#include "util/intlist.h"
 #include "util/values.h"
 
 #include "perf.h"
@@ -58,6 +59,8 @@ struct perf_report {
 	const char		*time_str;
 	struct			perf_time ptime;
 	float			min_percent;
+	struct target		target;
+	struct intlist		*pid, *tid;
 	DECLARE_BITMAP(cpu_bitmap, MAX_NR_CPUS);
 };
 
@@ -310,6 +313,19 @@ out:
 	return err;
 }
 
+static bool report_skip_sample(struct perf_report *rep, struct perf_sample *sample)
+{
+	if (perf_time__skip_sample(&rep->ptime, sample->time))
+		return true;
+
+	if (rep->pid && intlist__find(rep->pid, sample->pid) == NULL)
+		return true;
+
+	if (rep->tid && intlist__find(rep->tid, sample->tid) == NULL)
+		return true;
+
+	return false;
+}
 
 static int process_sample_event(struct perf_tool *tool,
 				union perf_event *event,
@@ -321,7 +337,7 @@ static int process_sample_event(struct perf_tool *tool,
 	struct addr_location al;
 	int ret;
 
-	if (perf_time__skip_sample(&rep->ptime, sample->time))
+	if (report_skip_sample(rep, sample))
 		return 0;
 
 	if (perf_event__preprocess_sample(event, machine, &al, sample) < 0) {
@@ -771,6 +787,28 @@ parse_percent_limit(const struct option *opt, const char *str,
 	return 0;
 }
 
+static int parse_target_str(struct perf_report *rep)
+{
+	if (rep->target.pid) {
+		rep->pid = intlist__new(rep->target.pid);
+		if (rep->pid == NULL) {
+			pr_err("Error parsing process id string\n");
+			return -EINVAL;
+		}
+	}
+
+	if (rep->target.tid) {
+		rep->tid = intlist__new(rep->target.tid);
+		if (rep->tid == NULL) {
+			intlist__delete(rep->pid);
+			pr_err("Error parsing thread id string\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 int cmd_report(int argc, const char **argv, const char *prefix __maybe_unused)
 {
 	struct perf_session *session;
@@ -833,7 +871,7 @@ int cmd_report(int argc, const char **argv, const char *prefix __maybe_unused)
 		   "snoop, locked, abort, in_tx, transaction"),
 	OPT_BOOLEAN(0, "showcpuutilization", &symbol_conf.show_cpu_utilization,
 		    "Show sample percentage for different cpu modes"),
-	OPT_STRING('p', "parent", &parent_pattern, "regex",
+	OPT_STRING(0, "parent", &parent_pattern, "regex",
 		   "regex filter to identify parent, see: '--sort parent'"),
 	OPT_BOOLEAN('x', "exclude-other", &symbol_conf.exclude_other,
 		    "Only display entries with parent-match"),
@@ -860,7 +898,7 @@ int cmd_report(int argc, const char **argv, const char *prefix __maybe_unused)
 	OPT_STRING('w', "column-widths", &symbol_conf.col_width_list_str,
 		   "width[,width...]",
 		   "don't try to adjust column width, use these fixed values"),
-	OPT_STRING('t', "field-separator", &symbol_conf.field_sep, "separator",
+	OPT_STRING(0, "field-separator", &symbol_conf.field_sep, "separator",
 		   "separator for columns, no spaces will be added between "
 		   "columns '.' is reserved."),
 	OPT_BOOLEAN('U', "hide-unresolved", &report.hide_unresolved,
@@ -869,6 +907,10 @@ int cmd_report(int argc, const char **argv, const char *prefix __maybe_unused)
 		    "Look for files with symbols relative to this directory"),
 	OPT_STRING('C', "cpu", &report.cpu_list, "cpu",
 		   "list of cpus to profile"),
+	OPT_STRING('p', "pid", &report.target.pid, "pid",
+		   "analyze events only for given process id(s)"),
+	OPT_STRING('t', "tid", &report.target.tid, "tid",
+		   "analyze events only for given thread id(s)"),
 	OPT_BOOLEAN('I', "show-info", &report.show_full_info,
 		    "Display extended information about perf.data file"),
 	OPT_BOOLEAN(0, "source", &symbol_conf.annotate_src,
@@ -908,6 +950,9 @@ int cmd_report(int argc, const char **argv, const char *prefix __maybe_unused)
 		use_browser = 1;
 	else if (report.use_gtk)
 		use_browser = 2;
+
+	if (parse_target_str(&report) != 0)
+		return -EINVAL;
 
 	if (report.inverted_callchain)
 		callchain_param.order = ORDER_CALLER;
