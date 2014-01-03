@@ -20,6 +20,8 @@ static u64 event_errors;
 static u64 timestamp_errors;
 static time_t start_time;
 
+static bool have_perf_clock;
+
 struct event_entry {
 	struct list_head list;
 
@@ -337,7 +339,7 @@ static s64 mmap_read_idx(struct perf_session *session,
 
 		/* limit events per mmap handled all at once */
 		n++;
-		if (n == MAX_EVENTS_PER_MMAP)
+		if (!have_perf_clock && n == MAX_EVENTS_PER_MMAP)
 			break;
 	}
 
@@ -353,22 +355,30 @@ static int mmap_read(struct perf_tool *tool,
 	int i, throttled = 0;
 	s64 n, ntotal = 0;
 	u64 flush_time = ULLONG_MAX, mmap_time;
+	/* get perf_clock timestamp at start of this round */
+	u64 perf_clock = get_perf_clock();
 
 	for (i = 0; i < session->evlist->nr_mmaps; i++) {
 		n = mmap_read_idx(session, i, &mmap_time);
 		if (n < 0)
 			return -1;
 
-		if (mmap_time < flush_time)
-			flush_time = mmap_time;
-
 		ntotal += n;
-		if (n == MAX_EVENTS_PER_MMAP)
-			throttled = 1;
+
+		if (!have_perf_clock) {
+			if (mmap_time < flush_time)
+				flush_time = mmap_time;
+
+			if (n == MAX_EVENTS_PER_MMAP)
+				throttled = 1;
+		}
 	}
 
 	/* flush queue after each round in which we processed events */
 	if (ntotal) {
+		if (have_perf_clock)
+			flush_time = perf_clock - 100*NSEC_PER_USEC;
+
 		session->ordered_samples.next_flush = flush_time;
 		if (tool->finished_round(tool, NULL, session) < 0) {
 			pr_err("finished_round failed\n");
@@ -402,6 +412,10 @@ static int daemon_event_loop(struct perf_sched *sched,
 	struct perf_evlist *evlist = session->evlist;
 	struct machine *machine = &session->machines.host;
 	int rc = 0;
+	int count = 1000;
+
+	if (perf_time__reftime_live() == 0)
+		have_perf_clock = true;
 
 	/* everything is good - enable the events and process */
 	perf_evlist__enable(evlist);
@@ -436,6 +450,13 @@ static int daemon_event_loop(struct perf_sched *sched,
 		 */
 		if (!rc && !done)
 			rc = poll(evlist->pollfd, evlist->nr_fds, poll_time);
+
+		/* periodically update perf_clock to time-of-day */
+		if (count-- == 0) {
+			count = 1000;
+			if (perf_time__reftime_live() == 0)
+				have_perf_clock = true;
+		}
 	}
 
 	perf_evlist__disable(evlist);
