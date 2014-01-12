@@ -19,15 +19,18 @@ int audit_machine__parse_str(const char *machine_str);
 
 #else
 
-static inline void audit_machine__init_thread(struct thread *thread)
+static inline
+void audit_machine__init_thread(struct thread *thread __maybe_unused)
 {
 }
 static inline
-void audit_machine__fork_thread(struct thread *t, struct thread *p)
+void audit_machine__fork_thread(struct thread *t __maybe_unused,
+				struct thread *p __maybe_unused)
 {
 }
 static inline
-void audit_machine__update_thread(struct thread *thread, struct map *map)
+void audit_machine__update_thread(struct thread *thread __maybe_unused,
+				  struct map *map __maybe_unused)
 {
 }
 #endif
