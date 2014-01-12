@@ -124,7 +124,7 @@ test-libpython-version:
 	$(BUILD) $(FLAGS_PYTHON_EMBED)
 
 test-libbfd:
-	$(BUILD) -DPACKAGE='"perf"' -lbfd -ldl
+	$(BUILD) -DPACKAGE='"perf"' -lbfd -lz -liberty -ldl
 
 test-liberty:
 	$(CC) -o $(OUTPUT)$@ test-libbfd.c -DPACKAGE='"perf"' -lbfd -ldl -liberty
