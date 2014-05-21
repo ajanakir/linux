@@ -13,12 +13,35 @@
 static struct timeval tv_ref;
 static u64 timestamp_ref;
 
+static u64 endstr_to_nsec(char *end)
+{
+		u64 t = (u64) -1;
+		int i;
+		char nsec_buf[10];
+
+		if (strlen(end) > 9)
+			return -1;
+
+		strncpy(nsec_buf, end, 9);
+		nsec_buf[9] = '\0';
+
+		/* make it nsec precision */
+		for (i = strlen(nsec_buf); i < 9; i++)
+			nsec_buf[i] = '0';
+
+		t = strtoul(nsec_buf, &end, 10);
+		if (*end != '\0')
+			return -1;
+
+		return t;
+}
+
 static int parse_timestr_tod(struct perf_time *ptime,
 			     char *start_str, char *end_str, const char *fmt)
 {
 	struct tm tm, tm_ref;
 	time_t t;
-	u64 tref;
+	u64 tref, nsec = 0;
 	char *endp;
 
 	if (timestamp_ref == 0 || tv_ref.tv_usec == 0) {
@@ -43,14 +66,21 @@ static int parse_timestr_tod(struct perf_time *ptime,
 
 		/* update based on the user string */
 		endp = strptime(start_str, fmt, &tm);
-		if (endp == NULL || *endp != '\0') {
+		if (endp && *endp == '.') {
+			nsec = endstr_to_nsec(++endp);
+			if (nsec == (u64) -1) {
+				pr_err("invalid start time string\n");
+				return -1;
+			}
+
+		} else if (endp == NULL || *endp != '\0') {
 			pr_err("invalid start time string\n");
 			return -1;
 		}
 
 		t = mktime(&tm);
 		if (t > tv_ref.tv_sec)
-			ptime->start = tref + (t - tv_ref.tv_sec) * NSEC_PER_SEC;
+			ptime->start = tref + (t - tv_ref.tv_sec) * NSEC_PER_SEC + nsec;
 	}
 
 	if (end_str && *end_str != '\0') {
@@ -58,7 +88,14 @@ static int parse_timestr_tod(struct perf_time *ptime,
 
 		/* update based on the user string */
 		endp = strptime(end_str, fmt, &tm);
-		if (endp == NULL || *endp != '\0') {
+		if (endp && *endp == '.') {
+			nsec = endstr_to_nsec(++endp);
+			if (nsec == (u64) -1) {
+				pr_err("invalid end time string\n");
+				return -1;
+			}
+
+		} else if (endp == NULL || *endp != '\0') {
 			pr_err("invalid end time string\n");
 			return -1;
 		}
@@ -67,14 +104,14 @@ static int parse_timestr_tod(struct perf_time *ptime,
 		if (t < tv_ref.tv_sec) {
 			ptime->end = 0;
 		} else {
-			ptime->end = tref + (t - tv_ref.tv_sec) * NSEC_PER_SEC;
+			ptime->end = tref + (t - tv_ref.tv_sec) * NSEC_PER_SEC + nsec;
 
 			/* if end time is before start time perhaps it is a
 			 * wrap over midnight. really need to add day option
 			 * to time string.
 			 */
 			if (ptime->end < ptime->start)
-				ptime->end += 86400;
+				ptime->end += 86400 * NSEC_PER_SEC;
 		}
 	}
 
@@ -91,22 +128,10 @@ static int parse_nsec_time(const char *str, u64 *nsec)
 		return -1;
 
 	if (*end == '.') {
-		int i;
-		char nsec_buf[10];
-
-		if (strlen(++end) > 9)
+		time_nsec = endstr_to_nsec(++end);
+		if (time_nsec == (u64) -1)
 			return -1;
 
-		strncpy(nsec_buf, end, 9);
-		nsec_buf[9] = '\0';
-
-		/* make it nsec precision */
-		for (i = strlen(nsec_buf); i < 9; i++)
-			nsec_buf[i] = '0';
-
-		time_nsec = strtoul(nsec_buf, &end, 10);
-		if (*end != '\0')
-			return -1;
 	} else
 		time_nsec = 0;
 
