@@ -4,7 +4,9 @@
 #include <linux/rbtree.h>
 #include <linux/list.h>
 #include <unistd.h>
+#ifdef HAVE_LIBAUDIT_SUPPORT
 #include <libaudit.h>
+#endif
 #include <sys/types.h>
 #include "symbol.h"
 #include <strlist.h>
