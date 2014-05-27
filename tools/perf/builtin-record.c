@@ -686,8 +686,10 @@ static int __cmd_record(struct perf_record *rec, int argc, const char **argv)
 	/*
 	 * Let the child rip
 	 */
-	if (forks)
+	if (forks) {
 		perf_evlist__start_workload(evsel_list);
+		pr_debug("workload started\n");
+	}
 
 	for (;;) {
 		int hits = rec->samples;
