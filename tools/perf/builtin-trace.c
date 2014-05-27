@@ -1769,7 +1769,7 @@ static int trace__sched_stat_runtime(struct trace *trace, struct perf_evsel *evs
 				     struct perf_sample *sample)
 {
         u64 runtime = perf_evsel__intval(evsel, sample, "runtime");
-	double runtime_ms = (double)runtime / NSEC_PER_MSEC;
+	double runtime_ms = (double)(runtime / NSEC_PER_MSEC);
 	struct thread *thread = machine__findnew_thread(trace->host,
 							sample->pid,
 							sample->tid);
@@ -2093,7 +2093,8 @@ out_error:
 static int trace__replay(struct trace *trace)
 {
 	const struct perf_evsel_str_handler handlers[] = {
-		{ "probe:vfs_getname",	     trace__vfs_getname, },
+		{ "probe:vfs_getname",	      trace__vfs_getname, },
+		{ "sched:sched_stat_runtime", trace__sched_stat_runtime, },
 	};
 	struct perf_data_file file = {
 		.path  = input_name,
