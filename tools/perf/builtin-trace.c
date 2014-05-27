@@ -2384,9 +2384,13 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 	};
 	int err, am;
 	char bf[BUFSIZ];
+	int replay = 0;
 
 	if ((argc > 1) && (strcmp(argv[1], "record") == 0))
 		return trace__record(argc-2, &argv[2]);
+
+	if ((argc > 1) && (strcmp(argv[1], "replay") == 0))
+		replay = 1;
 
 	argc = parse_options(argc, argv, trace_options, trace_usage, 0);
 
@@ -2446,7 +2450,7 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 	if (!argc && target__none(&trace.opts.target))
 		trace.opts.target.system_wide = true;
 
-	if (input_name)
+	if (replay)
 		err = trace__replay(&trace);
 	else
 		err = trace__run(&trace, argc, argv);
