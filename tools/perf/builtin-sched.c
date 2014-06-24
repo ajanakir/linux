@@ -28,7 +28,9 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <math.h>
+#if defined(__i386__) || defined(__x86_64__)
 #include <asm/vmx.h>
+#endif
 
 #define PR_SET_NAME		15               /* Set process name */
 #define MAX_CPUS		4096
@@ -212,9 +214,11 @@ struct thread_runtime {
 	u64 dt_delay;       /* time between wakeup and sched-in */
 	u64 ready_to_run;   /* time of wakeup */
 
+#if defined(__i386__) || defined(__x86_64__)
 	bool in_guest;      /* true when task is in guest mode */
 	bool exit_hlt;      /* exit reason is a cpu hlt */
 	u64 last_time_kvm;  /* track kvm_entry/exit times */
+#endif
 
 	struct stats run_stats;
 	u64 total_run_time;
@@ -2258,6 +2262,7 @@ static int timehist_sched_switch_event(struct perf_tool *tool,
 	return timehist_sched_change_event(tool, event, evsel, sample, machine);
 }
 
+#if defined(__i386__) || defined(__x86_64__)
 static int timehist_kvm_event(struct perf_tool *tool,
 			      union perf_event *event,
 			      struct perf_evsel *evsel,
@@ -2340,6 +2345,7 @@ static int timehist_kvm_exit_event(struct perf_tool *tool,
 {
 	return timehist_kvm_event(tool, event, evsel, sample, machine, false);
 }
+#endif
 
 static int process_lost(struct perf_tool *tool __maybe_unused,
 			union perf_event *event,
@@ -2616,8 +2622,10 @@ static int perf_sched__timehist(struct perf_sched *sched)
 		{ "sched:sched_switch",       timehist_sched_switch_event, },
 		{ "sched:sched_wakeup",	      timehist_sched_wakeup_event, },
 		{ "sched:sched_wakeup_new",   timehist_sched_wakeup_event, },
+#if defined(__i386__) || defined(__x86_64__)
 		{ "kvm:kvm_entry",            timehist_kvm_entry_event, },
 		{ "kvm:kvm_exit",             timehist_kvm_exit_event, },
+#endif
 	};
 	struct perf_data_file file = {
 		.path = input_name,

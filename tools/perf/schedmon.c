@@ -525,6 +525,7 @@ out:
 	return rc;
 }
 
+#if defined(__i386__) || defined(__x86_64__)
 static int add_kvm_events(struct perf_evlist *evlist)
 {
 	if (perf_evlist__add_newtp(evlist, "kvm", "kvm_entry", timehist_kvm_entry_event) ||
@@ -536,6 +537,12 @@ static int add_kvm_events(struct perf_evlist *evlist)
 
 	return 0;
 }
+#else
+static int add_kvm_events(struct perf_evlist *evlist __maybe_unused)
+{
+	return 0;
+}
+#endif
 
 static struct perf_evlist *create_evlist(void)
 {
@@ -690,7 +697,9 @@ static int perf_sched__daemon(struct perf_sched *sched,
 			   "prefix for output filenames (default: stdout); time appended"),
 		OPT_BOOLEAN('C', "gz", &do_compression,
 			   "write compressed files using gzip"),
+#if defined(__i386__) || defined(__x86_64__)
 		OPT_BOOLEAN(0, "kvm", &with_kvm, "Include kvm events"),
+#endif
 		OPT_INCR('v', "verbose", &verbose, "be verbose"),
 		OPT_END()
 	};
