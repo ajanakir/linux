@@ -1677,7 +1677,7 @@ static void timehist_header(struct perf_sched *sched)
 	fprintf(fp, "%.15s %.4s ", graph_dotted_line, graph_dotted_line);
 
 	if (sched->show_cpu_visual && max_cpus)
-		fprintf(fp, " %.*s  ", max_cpus, graph_dotted_line);
+		fprintf(fp, " %.*s  ", max_cpus+1, graph_dotted_line);
 
 	fprintf(fp, " %.20s  %.9s  %.9s  %.9s",
 		graph_dotted_line, graph_dotted_line, graph_dotted_line,
@@ -2783,6 +2783,9 @@ static int perf_sched__timehist(struct perf_sched *sched)
 
 	/* pre-allocate struct for per-CPU idle stats */
 	sched->max_cpu = session->header.env.nr_cpus_online;
+	if (sched->max_cpu == 0)
+		sched->max_cpu = 1;  /* have at least 1 cpu */
+
 	if (init_idle_threads(sched->max_cpu))
 		goto out;
 
