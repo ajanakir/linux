@@ -1849,7 +1849,7 @@ static int init_idle_threads(int ncpu)
 	int i;
 
 	if (ncpu == 0)
-		ncpu = 1;
+		ncpu = 16;
 
 	idle_threads = zalloc(ncpu * sizeof(struct thread *));
 	if (!idle_threads)
