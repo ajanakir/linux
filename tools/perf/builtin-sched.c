@@ -187,6 +187,7 @@ struct perf_sched {
 	unsigned int	max_stack;
 	bool		show_cpu_visual;
 	bool		show_wakeups;
+	bool		show_migrations;
 	bool		pstree;
 	bool		pstree_only;
 	bool		have_traces;
@@ -222,6 +223,8 @@ struct thread_runtime {
 
 	struct stats run_stats;
 	u64 total_run_time;
+
+	u64 migrations;
 };
 
 /* per event run time data */
@@ -2167,6 +2170,88 @@ static int timehist_sched_wakeup_event(struct perf_tool *tool,
 	return 0;
 }
 
+static void timehist_print_migration_event(struct perf_sched *sched,
+					struct perf_evsel *evsel,
+					struct perf_sample *sample,
+					struct machine *machine,
+					struct thread *migrated)
+{
+	struct thread *thread;
+	char tstr[64];
+	FILE *fp = sched->fp;
+	u32 max_cpus = sched->max_cpu;
+	u32 ocpu = perf_evsel__intval(evsel, sample, "orig_cpu");
+	u32 dcpu = perf_evsel__intval(evsel, sample, "dest_cpu");
+
+	thread = machine__findnew_thread(machine, sample->pid, sample->tid);
+	if (thread == NULL)
+		return;
+
+	/* show wakeup unless both awakee and awaker are filtered */
+	if (timehist_skip_sample(sched, thread) &&
+	    timehist_skip_sample(sched, migrated)) {
+		return;
+	}
+
+	fprintf(fp, "%15s ", perf_time__str(tstr, sizeof(tstr), sample->time, NULL));
+	fprintf(fp, "[%02d] ", sample->cpu);
+
+	if (sched->show_cpu_visual && max_cpus) {
+		u32 i;
+		char c;
+
+		fprintf(fp, "  ");
+		for (i = 0; i < max_cpus; ++i) {
+			c = (i == sample->cpu) ? 'm' : ' ';
+			fprintf(fp, "%c", c);
+		}
+		fprintf(fp, "  ");
+	}
+
+	fprintf(fp, " %-*s ", comm_width, timehist_get_commstr(thread));
+
+	/* dt spacer */
+	fprintf(fp, "  %9s  %9s  %9s ", "", "", "");
+
+	fprintf(fp, "%-*s", comm_width, timehist_get_commstr(migrated));
+	fprintf(fp, " cpu %d => %d", ocpu, dcpu);
+
+	fprintf(fp, "\n");
+
+	return;
+}
+
+static int timehist_migrate_task_event(struct perf_tool *tool,
+				       union perf_event *event __maybe_unused,
+				       struct perf_evsel *evsel,
+				       struct perf_sample *sample,
+				       struct machine *machine)
+{
+	struct perf_sched *sched = container_of(tool, struct perf_sched, tool);
+	struct thread *thread;
+	struct thread_runtime *tr = NULL;
+	/* want pid of migrated task not pid in sample */
+	const u32 pid = perf_evsel__intval(evsel, sample, "pid");
+
+	thread = machine__findnew_thread(machine, 0, pid);
+	if (thread == NULL)
+		return -1;
+
+	tr = thread__get_runtime(thread);
+	if (tr == NULL)
+		return -1;
+
+	tr->migrations++;
+
+	/* show migrations if requested */
+	if (sched->show_migrations &&
+	    !perf_time__skip_sample(&sched->ptime, sample->time)) {
+		timehist_print_migration_event(sched, evsel, sample, machine, thread);
+	}
+
+	return 0;
+}
+
 static int timehist_sched_change_event(struct perf_tool *tool,
 				       union perf_event *event,
 				       struct perf_evsel *evsel,
@@ -2382,6 +2467,7 @@ static void print_thread_runtime(FILE *fp, struct thread *t,
 	printf_nsecs(fp, r->run_stats.max, 6);
 	fprintf(fp, "  ");
 	fprintf(fp, "%5.2f", stddev);
+	fprintf(fp, "   %5" PRIu64, r->migrations);
 	fprintf(fp, "\n");
 }
 
@@ -2442,10 +2528,10 @@ static void timehist_print_summary(FILE *fp, struct perf_session *session)
 
 	fprintf(fp, "\nRuntime summary\n");
 	fprintf(fp, "%*s  parent   sched-in  ", comm_width, "comm");
-	fprintf(fp, "   run-time    min-run     avg-run     max-run  stddev\n");
+	fprintf(fp, "   run-time    min-run     avg-run     max-run  stddev  migrations\n");
 	fprintf(fp, "%*s            (count)  ", comm_width, "");
 	fprintf(fp, "     (msec)     (msec)      (msec)      (msec)       %%\n");
-	fprintf(fp, "%.105s\n", graph_dotted_line);
+	fprintf(fp, "%.117s\n", graph_dotted_line);
 
 	totals.fp = fp;
 	machine__for_each_thread(m, show_thread_runtime, &totals);
@@ -2627,6 +2713,7 @@ static int perf_sched__timehist(struct perf_sched *sched)
 		{ "sched:sched_switch",       timehist_sched_switch_event, },
 		{ "sched:sched_wakeup",	      timehist_sched_wakeup_event, },
 		{ "sched:sched_wakeup_new",   timehist_sched_wakeup_event, },
+		{ "sched:sched_migrate_task", timehist_migrate_task_event, },
 #if defined(__i386__) || defined(__x86_64__)
 		{ "kvm:kvm_entry",            timehist_kvm_entry_event, },
 		{ "kvm:kvm_exit",             timehist_kvm_exit_event, },
@@ -2990,6 +3077,7 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 	OPT_BOOLEAN('S', "with-summary", &sched.summary,
 		    "Show all syscalls and summary with statistics"),
 	OPT_BOOLEAN('w', "wakeups", &sched.show_wakeups, "Show wakeup events"),
+	OPT_BOOLEAN('M', "migrations", &sched.show_migrations, "Show migration events"),
 	OPT_BOOLEAN('V', "cpu-visual", &sched.show_cpu_visual, "Add CPU visual"),
 	OPT_BOOLEAN('T', "pstree", &sched.pstree_only, "Show only parent-child tree"),
 	OPT_BOOLEAN('P', "with-pstree", &sched.pstree, "Show parent-child tree"),
@@ -3079,6 +3167,10 @@ int cmd_sched(int argc, const char **argv, const char *prefix __maybe_unused)
 		}
 		if (sched.show_wakeups && sched.summary_only) {
 			pr_err("-w and -s are mutually exclusive.\n");
+			return -EINVAL;
+		}
+		if (sched.show_migrations && sched.summary_only) {
+			pr_err("-M and -s are mutually exclusive.\n");
 			return -EINVAL;
 		}
 		if (user_stack_only && kernel_stack_only) {
