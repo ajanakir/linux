@@ -2490,7 +2490,12 @@ static int perf_timehist__process_sample(struct perf_tool *tool,
 					 struct perf_evsel *evsel,
 					 struct machine *machine)
 {
+	struct perf_sched *sched = container_of(tool, struct perf_sched, tool);
 	int err = 0;
+	int this_cpu = sample->cpu;
+
+	if (this_cpu >= sched->max_cpu)
+		sched->max_cpu = this_cpu + 1;
 
 	evsel->hists.stats.total_period += sample->period;
 	hists__inc_nr_events(&evsel->hists, PERF_RECORD_SAMPLE);
