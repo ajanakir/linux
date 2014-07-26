@@ -1811,6 +1811,11 @@ static bool is_idle_sample(struct perf_sample *sample,
 	if (sample->pid == 0)
 		return true;
 
+	if (strcmp(perf_evsel__name(evsel), "sched:sched_switch") == 0) {
+		if (perf_evsel__intval(evsel, sample, "prev_pid") == 0)
+			return true;
+	}
+
 	/* want main thread for process - has maps */
 	thread = machine__findnew_thread(machine, sample->pid, sample->pid);
 	if (thread == NULL) {
@@ -2124,7 +2129,7 @@ static void timehist_print_wakeup_event(struct perf_sched *sched,
 	fprintf(fp, "%15s ", perf_time__str(tstr, sizeof(tstr), sample->time, NULL));
 	fprintf(fp, "[%02d] ", sample->cpu);
 	if (sched->show_cpu_visual && sched->max_cpu)
-		fprintf(fp, " %*s ", sched->max_cpu, "");
+		fprintf(fp, "  %*s  ", sched->max_cpu, "");
 
 	fprintf(fp, " %-*s ", comm_width, timehist_get_commstr(thread));
 
