@@ -2396,6 +2396,9 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 
 	argc = parse_options(argc, argv, trace_options, trace_usage, 0);
 
+	if (input_name)
+		replay = 1;
+
 	if (trace.machine_str) {
 		trace.default_machine = audit_machine__parse_str(trace.machine_str);
 		if (trace.default_machine < 0) {
