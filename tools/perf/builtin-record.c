@@ -859,7 +859,7 @@ static struct perf_record record = {
 		},
 	},
 	.mmap = {
-		.out_size = MMAP_OUTPUT_SIZE,
+		.out_size = 0,
 	},
 };
 
