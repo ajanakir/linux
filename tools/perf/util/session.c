@@ -661,7 +661,7 @@ int perf_session_queue_event(struct perf_session *s, union perf_event *event,
 
 	if (timestamp < s->ordered_samples.last_flush) {
 		printf("Warning: Timestamp below last timeslice flush\n");
-		return -EINVAL;
+		return -ETIME;
 	}
 
 	if (!list_empty(sc)) {
