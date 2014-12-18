@@ -311,7 +311,7 @@ static int get_reftime_clock(u64 *pclock, struct timeval *tv)
 			static int logit = 1;
 
 			if (logit == 1)
-				pr_err("Failed to get perf_clock timestamp. perf_clock module loaded?\n");
+				pr_debug("Failed to get perf_clock timestamp. perf_clock module loaded?\n");
 
 			logit = 0;
 		} else

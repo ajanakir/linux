@@ -195,9 +195,14 @@ static int session_has_reftime(struct perf_session *session,
 			struct perf_event_attr *attr)
 {
 	int type = attr->type;
+	int is_pipe = perf_data_file__is_pipe(session->file);
 
-	if (perf_time__have_reftime(session) == 0) {
-		/* if user did not ask for it take out the time field */
+	/* for pipe's set reftime live */
+	if ((is_pipe && perf_time__reftime_live() == 0) ||
+	    (perf_time__have_reftime(session) == 0)) {
+		/* if user did not ask for it take out the time field;
+		 * do not need it if we are showing time-of-day
+		 */
 		if (!output[type].user_set)
 			output[type].fields &= ~PERF_OUTPUT_TIME;
 
@@ -205,15 +210,25 @@ static int session_has_reftime(struct perf_session *session,
 	}
 
 	if ((output[type].user_set) || (tod_fmt != default_tod_fmt)) {
-		pr_err("Reference time not found in session header. "
-		"Cannot print time-of-day field.\n");
+		if (perf_data_file__is_pipe(session->file)) {
+			pr_err("Failed to set reference time. "
+				"Cannot print time-of-day field.\n");
+		} else {
+			pr_err("Reference time not found in session header. "
+				"Cannot print time-of-day field.\n");
+		}
 		return -1;
 	}
 
 	/* user did not ask for it explicitly so remove from the default list */
 	output[type].fields &= ~PERF_OUTPUT_TIMEOFDAY;
-	pr_debug("Reference time not found in session header. "
-		 "Cannot print time-of-day field.\n");
+	if (perf_data_file__is_pipe(session->file)) {
+		pr_debug("Failed to set reference time. "
+			"Cannot print time-of-day field.\n");
+	} else {
+		pr_debug("Reference time not found in session header. "
+			 "Cannot print time-of-day field.\n");
+	}
 
 	return 0;
 }
