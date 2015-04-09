@@ -1690,9 +1690,6 @@ static void timehist_header(struct perf_sched *sched)
 	printf(" %-20s  %9s  %9s  %9s",
 		"task name", "b/n time", "sch delay", "run time");
 
-	if (sched->show_wakeups)
-		printf("  %-20s", "wakeup");
-
 	printf("\n");
 
 	/*
@@ -1715,9 +1712,6 @@ static void timehist_header(struct perf_sched *sched)
 		graph_dotted_line, graph_dotted_line, graph_dotted_line,
 		graph_dotted_line);
 
-	if (sched->show_wakeups)
-		printf("  %.20s", graph_dotted_line);
-
 	printf("\n");
 }
 
@@ -1734,7 +1728,7 @@ static void timehist_print_sample(struct perf_sched *sched,
 
 	printf("%15s ", perf_time__str(tstr, sizeof(tstr), t, NULL));
 
-	printf("[%02d] ", sample->cpu);
+	printf("[%04d] ", sample->cpu);
 
 	if (sched->show_cpu_visual) {
 		u32 i;
@@ -2155,7 +2149,7 @@ static void timehist_print_wakeup_event(struct perf_sched *sched,
 	}
 
 	printf("%15s ", perf_time__str(tstr, sizeof(tstr), sample->time, NULL));
-	printf("[%02d] ", sample->cpu);
+	printf("[%04d] ", sample->cpu);
 	if (sched->show_cpu_visual)
 		printf(" %*s ", sched->max_cpu + 1, "");
 
@@ -2164,7 +2158,7 @@ static void timehist_print_wakeup_event(struct perf_sched *sched,
 	/* dt spacer */
 	printf("  %9s  %9s  %9s ", "", "", "");
 
-	printf("%-*s", comm_width, timehist_get_commstr(awakened));
+	printf("awakened: %s", timehist_get_commstr(awakened));
 
 	printf("\n");
 }
@@ -2217,14 +2211,13 @@ static void timehist_print_migration_event(struct perf_sched *sched,
 	if (thread == NULL)
 		return;
 
-	/* show wakeup unless both awakee and awaker are filtered */
 	if (timehist_skip_sample(sched, thread) &&
 	    timehist_skip_sample(sched, migrated)) {
 		return;
 	}
 
 	printf("%15s ", perf_time__str(tstr, sizeof(tstr), sample->time, NULL));
-	printf("[%02d] ", sample->cpu);
+	printf("[%04d] ", sample->cpu);
 
 	if (sched->show_cpu_visual) {
 		u32 i;
@@ -2243,7 +2236,7 @@ static void timehist_print_migration_event(struct perf_sched *sched,
 	/* dt spacer */
 	printf("  %9s  %9s  %9s ", "", "", "");
 
-	printf("%-*s", comm_width, timehist_get_commstr(migrated));
+	printf("migrated: %s", timehist_get_commstr(migrated));
 	printf(" cpu %d => %d", ocpu, dcpu);
 
 	printf("\n");
