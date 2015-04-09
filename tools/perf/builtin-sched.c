@@ -1912,8 +1912,10 @@ static void free_idle_threads(void)
 	if (idle_threads == NULL)
 		return;
 
-	for (i = 0; i <= idle_max_cpu; ++i)
-		thread__delete(idle_threads[i]);
+	for (i = 0; i <= idle_max_cpu; ++i) {
+		if ((idle_threads[i]))
+			thread__delete(idle_threads[i]);
+	}
 
 	free(idle_threads);
 }
