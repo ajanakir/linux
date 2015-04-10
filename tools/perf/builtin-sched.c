@@ -191,6 +191,7 @@ struct perf_sched {
 	u64		skipped_samples;
 	const char	*time_str;
 	struct perf_time ptime;
+	bool		needs_swap;
 };
 
 /* used in symbol filter */
@@ -2175,7 +2176,10 @@ static int timehist_sched_wakeup_event(struct perf_tool *tool,
 	struct thread *thread;
 	struct thread_runtime *tr = NULL;
 	/* want pid of awakened task not pid in sample */
-	const u32 pid = perf_evsel__intval(evsel, sample, "pid");
+	u32 pid = perf_evsel__intval(evsel, sample, "pid");
+
+	if (sched->needs_swap)
+		pid = bswap_32(pid);
 
 	thread = machine__findnew_thread(machine, 0, pid);
 	if (thread == NULL)
@@ -2208,6 +2212,11 @@ static void timehist_print_migration_event(struct perf_sched *sched,
 	u32 max_cpus = sched->max_cpu + 1;
 	u32 ocpu = perf_evsel__intval(evsel, sample, "orig_cpu");
 	u32 dcpu = perf_evsel__intval(evsel, sample, "dest_cpu");
+
+	if (sched->needs_swap) {
+		ocpu = bswap_32(ocpu);
+		dcpu = bswap_32(dcpu);
+	}
 
 	thread = machine__findnew_thread(machine, sample->pid, sample->tid);
 	if (thread == NULL)
@@ -2254,7 +2263,10 @@ static int timehist_migrate_task_event(struct perf_tool *tool,
 	struct thread *thread;
 	struct thread_runtime *tr = NULL;
 	/* want pid of migrated task not pid in sample */
-	const u32 pid = perf_evsel__intval(evsel, sample, "pid");
+	u32 pid = perf_evsel__intval(evsel, sample, "pid");
+
+	if (sched->needs_swap)
+		pid = bswap_32(pid);
 
 	thread = machine__findnew_thread(machine, 0, pid);
 	if (thread == NULL)
@@ -2665,6 +2677,8 @@ static int perf_sched__timehist(struct perf_sched *sched)
 	evlist = session->evlist;
 
 	symbol__init(&session->header.env);
+
+	sched->needs_swap = session->header.needs_swap;
 
 	if (perf_time__have_reftime(session) != 0)
 		pr_debug("No reference time. Time stamps will be perf_clock\n");
