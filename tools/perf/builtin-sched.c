@@ -2276,6 +2276,314 @@ static int timehist_migrate_task_event(struct perf_tool *tool,
 	return 0;
 }
 
+/* IRQ statistics */
+struct irq_stat {
+	u64 t_entry;
+	u64 total_run;
+	u64 count;
+
+	u32  num;
+	bool nested;
+
+	char name[16];
+};
+
+/* IRQ data by CPU */
+struct irq_cpu {
+	u32 num;
+	u32 active_vec;
+	u32 max_vec;
+	struct irq_stat **irq_stats;
+};
+
+static void timehist_handle_irq_event(struct perf_sched *sched,
+				      struct irq_stat *irq,
+				      struct perf_sample *sample,
+				      const char *desc)
+{
+	u64 dt = 0, t = sample->time;
+	u32 cpu = sample->cpu;
+	char tstr[64];
+
+	if (t < irq->t_entry) {
+		pr_err("exit time before entry for %s %d on cpu %d\n",
+			desc, irq->num, cpu);
+	} else if (irq->t_entry) {
+		dt = t - irq->t_entry;
+	}
+
+	printf("%15s ", perf_time__str(tstr, sizeof(tstr), t, NULL));
+	printf("[%04d] ", cpu);
+
+	if (sched->show_cpu_visual) {
+		u32 i, max_cpus = sched->max_cpu + 1;
+		char c;
+
+		printf("  ");
+		for (i = 0; i < max_cpus; ++i) {
+			c = (i == cpu) ? 'i' : ' ';
+			printf("%c", c);
+		}
+		printf("  ");
+	}
+
+	printf(" --> %s %d ", desc, irq->num);
+	if (irq->name[0])
+		printf("(%s) ", irq->name);
+
+	if (dt) {
+		dt /= NSEC_PER_USEC;
+		if (dt == 0)
+			printf(" <1 usec");
+		else
+			printf(" %" PRIu64 " usecs", dt);
+	} else
+		printf(" <unknown> nsecs");
+
+	printf("%s\n", irq->nested ? " (nested)" : "");
+
+	irq->count++;
+	irq->total_run += dt;
+}
+
+static struct irq_stat *irq_stat_from_cpu(struct irq_cpu *irq_cpu, u32 vec)
+{
+	struct irq_stat *irq_stat;
+
+	if (vec >= irq_cpu->max_vec) {
+		int i, n = __roundup_pow_of_two(vec + 1);
+		void *p;
+
+		p = realloc(irq_cpu->irq_stats, n * sizeof(struct irq_stat *));
+		if (!p)
+			return NULL;
+
+		irq_cpu->irq_stats = p;
+		for (i = irq_cpu->max_vec; i < n; ++i)
+			irq_cpu->irq_stats[i] = NULL;
+
+		irq_cpu->max_vec = n;
+	}
+
+	irq_stat = irq_cpu->irq_stats[vec];
+	if (irq_stat == NULL) {
+		irq_stat = malloc(sizeof(struct irq_stat));
+		if (irq_stat == NULL) {
+			pr_err("Failed to allocate per-cpu struct for hardirq stats\n");
+			return NULL;
+		}
+		memset(irq_stat, 0, sizeof(struct irq_stat));
+		irq_stat->num = vec;
+		irq_cpu->irq_stats[vec] = irq_stat;
+	}
+
+
+	if (irq_cpu->active_vec && irq_cpu->active_vec != vec) {
+		irq_stat->nested = 1;
+	} else {
+		irq_stat->nested = 0;
+		irq_cpu->active_vec = vec;
+	}
+
+	return irq_stat;
+}
+
+
+static void timehist_irq_done(struct irq_cpu **irq_type, u32 max_cpu,
+			      u32 cpu, u32 vec)
+{
+	struct irq_cpu *irq_cpu;
+
+	if (irq_type == NULL || cpu >= max_cpu)
+		return;
+
+	irq_cpu = irq_type[cpu];
+	if (irq_cpu == NULL)
+		return;
+
+	if (irq_cpu->active_vec == vec)
+		irq_cpu->active_vec = 0;
+}
+
+static struct irq_cpu **softirq;
+static u32 softirq_max_cpu;
+
+static struct irq_stat *timehist_softirq_stat(u32 cpu, u32 vec)
+{
+	struct irq_cpu *irq_cpu;
+
+	if (softirq == NULL || cpu >= softirq_max_cpu) {
+		int i, n = __roundup_pow_of_two(cpu+1);
+		void *p;
+
+		p = realloc(softirq, n * sizeof(struct irq_cpu *));
+		if (!p)
+			return NULL;
+
+		softirq = p;
+		for (i = softirq_max_cpu; i < n; ++i)
+			softirq[i] = NULL;
+
+		softirq_max_cpu = n;
+	}
+
+	irq_cpu = softirq[cpu];
+	if (irq_cpu == NULL) {
+		irq_cpu = malloc(sizeof(struct irq_cpu));
+		if (irq_cpu == NULL) {
+			pr_err("Failed to allocate per-cpu struct for softirq stats\n");
+			return NULL;
+		}
+		memset(irq_cpu, 0, sizeof(struct irq_cpu));
+		irq_cpu->num = cpu;
+		softirq[cpu] = irq_cpu;
+	}
+
+	return irq_stat_from_cpu(irq_cpu, vec);
+}
+
+static void timehist_softirq_done(u32 cpu, u32 vec)
+{
+	timehist_irq_done(softirq, softirq_max_cpu, cpu, vec);
+}
+
+static int timehist_softirq_exit_event(struct perf_tool *tool,
+				   union perf_event *event __maybe_unused,
+				   struct perf_evsel *evsel,
+				   struct perf_sample *sample,
+				   struct machine *machine __maybe_unused)
+{
+	struct perf_sched *sched = container_of(tool, struct perf_sched, tool);
+	const u32 vec = perf_evsel__intval(evsel, sample, "vec");
+	struct irq_stat *irq;
+	u32 cpu = sample->cpu;
+
+	irq = timehist_softirq_stat(cpu, vec);
+	if (irq == NULL) {
+		pr_err("Failed to look up softirq %d on cpu %d\n", vec, cpu);
+		return 0;
+	}
+
+	timehist_handle_irq_event(sched, irq, sample, "softirq");
+
+	timehist_softirq_done(cpu, vec);
+
+	return 0;
+}
+
+static int timehist_softirq_entry_event(struct perf_tool *tool __maybe_unused,
+				    union perf_event *event __maybe_unused,
+				    struct perf_evsel *evsel,
+				    struct perf_sample *sample,
+				    struct machine *machine __maybe_unused)
+{
+	const u32 vec = perf_evsel__intval(evsel, sample, "vec");
+	struct irq_stat *irq = timehist_softirq_stat(sample->cpu, vec);
+
+	if (irq == NULL) {
+		pr_err("Failed to look up softirq %d on cpu %d\n",
+			vec, sample->cpu);
+		return 0;
+	}
+
+	irq->t_entry = sample->time;
+
+	return 0;
+}
+
+static struct irq_cpu **hardirq;
+static u32 hardirq_max_cpu;
+
+static void timehist_hardirq_done(u32 cpu, u32 vec)
+{
+	timehist_irq_done(hardirq, hardirq_max_cpu, cpu, vec);
+}
+
+static struct irq_stat *timehist_hardirq_stat(u32 cpu, u32 vec)
+{
+	struct irq_cpu *irq_cpu;
+
+	if (hardirq == NULL || cpu >= hardirq_max_cpu) {
+		int i, n = __roundup_pow_of_two(cpu+1);
+		void *p;
+
+		p = realloc(hardirq, n * sizeof(struct irq_cpu *));
+		if (!p)
+			return NULL;
+
+		hardirq = p;
+		for (i = hardirq_max_cpu; i < n; ++i)
+			hardirq[i] = NULL;
+
+		hardirq_max_cpu = n;
+	}
+
+	irq_cpu = hardirq[cpu];
+	if (irq_cpu == NULL) {
+		irq_cpu = malloc(sizeof(struct irq_cpu));
+		if (irq_cpu == NULL) {
+			pr_err("Failed to allocate per-cpu struct for hardirq stats\n");
+			return NULL;
+		}
+		memset(irq_cpu, 0, sizeof(struct irq_cpu));
+		irq_cpu->num = cpu;
+		hardirq[cpu] = irq_cpu;
+	}
+
+	return irq_stat_from_cpu(irq_cpu, vec);
+}
+
+static int timehist_irq_exit_event(struct perf_tool *tool,
+				   union perf_event *event __maybe_unused,
+				   struct perf_evsel *evsel,
+				   struct perf_sample *sample,
+				   struct machine *machine __maybe_unused)
+{
+	struct perf_sched *sched = container_of(tool, struct perf_sched, tool);
+	const u32 irq = perf_evsel__intval(evsel, sample, "irq");
+	struct irq_stat *irq_stat;
+	u32 cpu = sample->cpu;
+
+	irq_stat = timehist_hardirq_stat(cpu, irq);
+	if (irq_stat == NULL) {
+		pr_err("Failed to look up irq %d on cpu %d\n", irq, cpu);
+		return 0;
+	}
+
+	timehist_handle_irq_event(sched, irq_stat, sample, "hardirq");
+
+	timehist_hardirq_done(cpu, irq);
+
+	return 0;
+}
+
+static int timehist_irq_entry_event(struct perf_tool *tool __maybe_unused,
+				    union perf_event *event __maybe_unused,
+				    struct perf_evsel *evsel,
+				    struct perf_sample *sample,
+				    struct machine *machine __maybe_unused)
+{
+	const u32 irq = perf_evsel__intval(evsel, sample, "irq");
+	struct irq_stat *irq_stat;
+	u32 cpu = sample->cpu;
+
+	irq_stat = timehist_hardirq_stat(cpu, irq);
+	if (irq_stat == NULL) {
+		pr_err("Failed to look up irq %d on cpu %d\n", irq, cpu);
+		return 0;
+	}
+
+	if (irq_stat->name[0] == '\0') {
+		const char *name = perf_evsel__rawptr(evsel, sample, "name");
+
+		memcpy(irq_stat->name, name, sizeof(irq_stat->name)-1);
+	}
+
+	irq_stat->t_entry = sample->time;
+
+	return 0;
+}
+
 static int timehist_sched_change_event(struct perf_tool *tool,
 				       union perf_event *event,
 				       struct perf_evsel *evsel,
@@ -2630,6 +2938,10 @@ static int perf_sched__timehist(struct perf_sched *sched)
 		{ "sched:sched_wakeup",	      timehist_sched_wakeup_event, },
 		{ "sched:sched_wakeup_new",   timehist_sched_wakeup_event, },
 		{ "sched:sched_migrate_task", timehist_migrate_task_event, },
+		{ "irq:irq_handler_entry",    timehist_irq_entry_event, },
+		{ "irq:irq_handler_exit",     timehist_irq_exit_event,  },
+		{ "irq:softirq_entry",        timehist_softirq_entry_event, },
+		{ "irq:softirq_exit",         timehist_softirq_exit_event,  },
 	};
 	struct perf_data_file file = {
 		.path = input_name,
